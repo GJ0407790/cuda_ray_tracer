@@ -1,0 +1,16 @@
+exposure
+suns
+camera
+lenses
+plane
+triangle
+barycentric
+map
+bulb
+reflect
+refract
+rough
+antialias
+focus
+global
+BVH
