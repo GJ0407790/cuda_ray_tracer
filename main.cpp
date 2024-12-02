@@ -24,7 +24,7 @@ int main(int argc, char* argv[]){
     //create the image
     Image img(width,height);
     
-    draw(img);
+    render(img);
     
     img.save(filename.c_str());
 }

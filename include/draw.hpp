@@ -18,7 +18,7 @@
 #include <vector>
 #include <tuple>
 
-void draw(Image& img);
+void render(Image& img);
 
 RGBA shootPrimaryRay(double x,double y);
 

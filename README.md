@@ -4,7 +4,6 @@ A simple C++ raytracer implementation with reflection, refraction, texture, glob
 
 ## Roadmap
 
-- [ ] CMake support
 - [ ] Full Doxygen comment support
 - [ ] GPU-friendly BVH Tree and general data structure
 - [ ] CUDA acceleration

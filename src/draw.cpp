@@ -20,15 +20,16 @@
 
 #define EPSILON 0.001
 /**
- * @brief The draw function that loops over the screen of pixels.
- * @param img The image to draw on.
- * 
+ * @brief The render function that loops over the screen of pixels.
+ * @param img The image to render on.
+ * @details	Loops over all pixels in the canvas and shoots a primary ray
+ * 			at that pixel. Shoot multiple rays if anti-alising is on.
  */
-void draw(Image& img){
+void render(Image& img){
 	//loop over all pixels	
 	// Update bar state
-	//int totalPixels = width * height;
-    //ProgressBar progressBar(totalPixels);
+	int totalPixels = width * height;
+    ProgressBar progressBar(totalPixels);
 
 	#pragma omp parallel for collapse(2) schedule(dynamic)
 	for(int y = 0; y < height;y++){
@@ -47,11 +48,11 @@ void draw(Image& img){
 				}
 			}
 
-			//progressBar.update(y * width + x + 1);
+			progressBar.update(y * width + x + 1);
 
 		}
 	}
-	//progressBar.finish();
+	progressBar.finish();
 }
 
 /**
@@ -59,8 +60,11 @@ void draw(Image& img){
  * @param x x coordinate of the pixel.
  * @param y y coordinate of the pixel.
  * @return RGBA the final pixel color value, in linear RGB color space.
- * @details This function shoots one primary ray for the pixel (x,y). Multiple
- *          calls achieve anti-aliasing.
+ * @details This function shoots one primary ray for the pixel (x,y). It will 
+ * 			calculate the color for the pixel with the nearest object the primary
+ * 			ray hit, and the final color will be the blend of diffuse, reflect, 
+ * 			refract and global illumination color. The latter three could create
+ * 			more rays that will bounce in the scene.
  */
 RGBA shootPrimaryRay(double x,double y){
 	//create a ray
@@ -100,12 +104,21 @@ ObjectInfo hitNearest(Ray& ray){
 
 /**
  * @brief Does nothing.
- * @return ObjectInfo 
+ * @return ObjectInfo A default no-hit objectInfo.
  */
 ObjectInfo hitMiss(){
 	return ObjectInfo();
 }
 
+/**
+ * @brief Get the diffuse light color,with shadow checking.
+ * @param obj The objectInfo instance with the intersection information.
+ * @return RGBA The RGBA linear color at the location.
+ * @details The diffuse light color is checked by creating a shadow ray from the intersection
+ * 			point and the normal. This ray is checked against all light sources, and the 
+ * 			actual color is found with the lambert light model. If a object totally obstructs
+ * 			a shadow ray, that ray does not contribute to the diffuse lighting.
+ */
 RGBA diffuseLight(const ObjectInfo& obj){
 	RGBA color;
 	vec3 normal = obj.normal;
@@ -135,6 +148,16 @@ RGBA diffuseLight(const ObjectInfo& obj){
 	return color;
 }
 
+
+/**
+ * @brief Get the reflection light color.
+ * @param ray The ray which caused the reflection.
+ * @param obj The objectInfo instance with the intersection information.
+ * @return RGBA The RGBA linear color at the location.
+ * @details The reflection ray is calculated and checked against all objects in 
+ * 			the scene. If the reflection ray did hit an object, a full light
+ * 			calculation is performed to achieve the reflection lighting effect.
+ */
 RGBA reflectionLight(const Ray& ray,const ObjectInfo& obj){
 	if(obj.shine == RGB(0.0,0.0,0.0) || ray.bounce <= 0) return RGBA();
 
@@ -171,6 +194,23 @@ RGBA reflectionLight(const Ray& ray,const ObjectInfo& obj){
 	return color;
 }
 
+/**
+ * @brief Get the refraction light color.
+ * @param ray The ray which caused the refraction.
+ * @param obj The objectInfo instance with the intersection information.
+ * @return RGBA The RGBA linear color at the location.
+ * @details The refraction discriminant (k) is calculated and if k < 0, total 
+ * 			internal refraction occur, which is treated as reflection. If not, the
+ * 			refraction ray is calculated, and checked against all objects again(this 
+ * 			currently only works for spheres and could be optimized). When the ray hits
+ * 			the object again, the final refraction ray is calculated using the inverse
+ * 			of the ior ratio during ray entrance. After the ray exits, full light calculation
+ * 			is performed.
+ * @note Currently this function only handles air-object intersection.
+ * 		 It also assumes that total internal refraction will not happen inside
+ * 		 the object itself, and the sphere-intersection could be optimized when
+ * 	 	 the ray is inside the object.
+ */
 RGBA refractionLight(const Ray& ray,const ObjectInfo& obj){
 	if(obj.trans == RGB(0.0,0.0,0.0) || ray.bounce <= 0) return RGBA();
 	vec3 refract_dir;
@@ -222,6 +262,17 @@ RGBA refractionLight(const Ray& ray,const ObjectInfo& obj){
 	return color;
 }
 
+/**
+ * @brief Get the global illumination light color.
+ * @param obj The objectInfo instance with the intersection information.
+ * @param gi_bounce Remaining bounces for global illumination rays.
+ * @return RGBA The RGBA linear color at the location.
+ * @details A gi ray is created by selecting a new ray in the sphere at the intersection 
+ * 			point. This gi ray, after intersection, can create more gi rays based
+ * 			on the remaining gi bounce.
+ * @deprecated This version of global illumination is too slow and does not work
+ * 			   that well. Will be replaced by something better later.
+ */
 RGBA globalIllumination(const ObjectInfo& obj,int gi_bounce){
 	if(gi == 0 || gi_bounce == 0) return RGBA(); //exit if global illumination disabled
 	vec3 normal = obj.normal;
@@ -251,8 +302,11 @@ RGBA globalIllumination(const ObjectInfo& obj,int gi_bounce){
  * @param ray The ray to check against.
  * @param exit_early For shadow checking purposes, exit early if a plane is in the
  *        way, casting shadows. Do not set to true with bulb(light in scene).
- * @return std::tuple<double,point3,vec3,RGB> The distance to the plane(<0 no intersection), the 
- *          intersecting point,the normal, the color of the plane.
+ * @return ObjectInfo The objectInfo instance which contains all intersection informations.
+ * @details The parametric distance t is calculated. If t < 0, this means that the ray
+ * 			intersection is behind the ray origin, which means no intersection. Else, 
+ * 			calculate the intersection point with t.
+ *
  */
 ObjectInfo checkPlane(Ray& ray, bool exit_early){
 	double t_sol = INT_MAX;
@@ -291,14 +345,16 @@ ObjectInfo checkPlane(Ray& ray, bool exit_early){
  * @param objColor The color of the object.
  * @param lightColor The color of the light.
  * @return RGB The linear RGB color, after blending.
- * @details Takes care of color exposure.
+ * @details This function applies the lambert constant to the light color
+ * 			and get the correct color by blending the colors of the light
+ * 			and the object. Also takes care of exposure.
  */
 RGBA getColorSun(double lambert,RGB objColor,RGB lightColor){
 	double r,g,b;
 	r = objColor.r * (lightColor.r * lambert);
 	g = objColor.g * (lightColor.g * lambert);
 	b = objColor.b * (lightColor.b * lambert);
-	return RGBA(r,g,b,0.0);
+	return RGBA(setExpose(r),setExpose(g),setExpose(b),0.0);
 }
 
 /**
@@ -307,7 +363,10 @@ RGBA getColorSun(double lambert,RGB objColor,RGB lightColor){
  * @param objColor The color of the object.
  * @param lightColor The color of the light.
  * @return RGB The linear RGB color, after blending.
- * @details Takes care of color exposure. Applys light intensity falloff.
+ * @details This function applies the lambert constant to the light color
+ * 			and get the correct color by blending the colors of the light
+ * 			and the object, and applys light intensity falloff.
+ * 			Also takes care of exposure.`
  */
 RGBA getColorBulb(double lambert,RGB objColor,RGB lightColor,double t){
 	double r,g,b;
