@@ -30,3 +30,7 @@
 *.exe
 *.out
 *.app
+*.ps1
+
+docs/doxygen
+Doxyfile

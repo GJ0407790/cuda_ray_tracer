@@ -62,7 +62,7 @@ std::tuple<double,double> Sphere::sphereUV(const point3& point) const {
 
 RGB Sphere::getColor(const point3& point){
 	if(texture.empty()){
-		return this->color;
+		return mat.color;
 	}else{
 		auto[u,v] = this->sphereUV(point);
 		int x = (1-u) * this->texture.width();
@@ -76,7 +76,7 @@ RGB Sphere::getColor(const point3& point){
 
 RGB Triangle::getColor(double b0,double b1,double b2){
 	if(texture.empty()){
-		return this->color;
+		return mat.color;
 	}else{     
 		auto [u0,v0] = this->tex0;
 		auto [u1,v1] = this->tex1;
@@ -114,7 +114,7 @@ ObjectInfo Sphere::checkObject(Ray& ray){
 	point3 p = t * ray.dir + ray.eye;
 	s_color = this->getColor(p);
 	nor = (inside) ? 1/r * (c - p) : 1/r * (p - c);
-	return ObjectInfo(t,p,nor,s_color,shininess,trans,ior,roughness); 
+	return ObjectInfo(t,p,nor,mat); 
 }
 
 ObjectInfo Triangle::checkObject(Ray& ray){
@@ -131,5 +131,5 @@ ObjectInfo Triangle::checkObject(Ray& ray){
 	if(!inside && t > 0.00000001) return ObjectInfo(); //magic number, epsilon but smaller
 	t_color = this->getColor(b0,b1,b2);
 	normal = (dot(nor,ray.dir) < 0) ? nor : -nor; //determine the direction normal points to
-	return ObjectInfo(t,intersection_point,normal,t_color,shininess,trans,ior,roughness); 
+	return ObjectInfo(t,intersection_point,normal,mat); 
 }

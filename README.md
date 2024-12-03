@@ -2,6 +2,8 @@
 
 A simple C++ raytracer implementation with reflection, refraction, texture, global illumination, CPU multi-thread acceleration and BVH support.
 
+The [Doxygen Documentation](https://www.jin3472.com/index.html) is here.
+
 ## Roadmap
 
 - [ ] Full Doxygen comment support
@@ -28,5 +30,7 @@ A simple C++ raytracer implementation with reflection, refraction, texture, glob
 The base of this project is a MP I wrote for CS418, Interactive Computer Graphics, at the University of Illinois Urbana-Champaign.
 
 [Ray Tracing: The Next Week](https://raytracing.github.io/books/RayTracingTheNextWeek.html)
+
+[CS 418 Interactive Computer Graphics](https://cs418.cs.illinois.edu/website/index.html)
 
 [CS 419 Production Computer Graphics](https://illinois-cs419.github.io/)

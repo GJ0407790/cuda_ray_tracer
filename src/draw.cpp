@@ -78,11 +78,12 @@ RGBA shootPrimaryRay(double x,double y){
 		diffuse = diffuseLight(obj);
 		reflect = reflectionLight(ray,obj);
 		refract = refractionLight(ray,obj);
-		gi_color = obj.color * globalIllumination(obj,gi);
+		gi_color = obj.mat.color * globalIllumination(obj,gi);
 		//mix the colors
-		color = obj.shine * reflect + 
-				(RGB(1,1,1) - obj.shine) * obj.trans * refract + 
-				(RGB(1,1,1) - obj.shine) * (RGB(1,1,1) - obj.trans) * (diffuse + gi_color);
+		color = obj.mat.shininess * reflect + 
+				(RGB(1,1,1) - obj.mat.shininess) * obj.mat.trans * refract + 
+				(RGB(1,1,1) - obj.mat.shininess) * 
+				(RGB(1,1,1) - obj.mat.trans) * (diffuse + gi_color);
 		color.a = 1.0;
 	}else hitMiss(); //hitMiss() does nothing
 
@@ -122,8 +123,9 @@ ObjectInfo hitMiss(){
 RGBA diffuseLight(const ObjectInfo& obj){
 	RGBA color;
 	vec3 normal = obj.normal;
-	if(obj.rough > 0)
-		normal = normal + vec3(standerdD(obj.rough),standerdD(obj.rough),standerdD(obj.rough));
+	if(obj.mat.roughness > 0)
+		normal = normal + vec3(standerdD(obj.mat.roughness),
+		standerdD(obj.mat.roughness),standerdD(obj.mat.roughness));
 	normal = normal.normalize();
 	for(auto& light : sun){
 		//Create a shadow ray, check if path blocked
@@ -131,7 +133,7 @@ RGBA diffuseLight(const ObjectInfo& obj){
 		auto sunInfo = hitNearest(shadow_ray);
 		if(sunInfo.isHit) continue;
 		double lambert = std::max(dot(normal,light.dir.normalize()),0.0);
-		color = color + getColorSun(lambert,obj.color,light.color);
+		color = color + getColorSun(lambert,obj.mat.color,light.color);
 		}
 		//iterate over all point lights(bulbs)
 	for(auto& light : bulbs){
@@ -143,7 +145,7 @@ RGBA diffuseLight(const ObjectInfo& obj){
 			if(bulbInfo.distance < bulbDir.length()) continue;
 		}
 		double lambert = std::max(dot(normal,bulbDir.normalize()),0.0);
-		color = color + getColorBulb(lambert,obj.color,light.color,bulbDir.length());
+		color = color + getColorBulb(lambert,obj.mat.color,light.color,bulbDir.length());
 	}
 	return color;
 }
@@ -159,11 +161,12 @@ RGBA diffuseLight(const ObjectInfo& obj){
  * 			calculation is performed to achieve the reflection lighting effect.
  */
 RGBA reflectionLight(const Ray& ray,const ObjectInfo& obj){
-	if(obj.shine == RGB(0.0,0.0,0.0) || ray.bounce <= 0) return RGBA();
+	if(obj.mat.shininess == RGB(0.0,0.0,0.0) || ray.bounce <= 0) return RGBA();
 
 	vec3 normal = obj.normal;
-	if(obj.rough > 0)
-		normal = normal+vec3(standerdD(obj.rough),standerdD(obj.rough),standerdD(obj.rough));
+	if(obj.mat.roughness > 0)
+		normal = normal+vec3(standerdD(obj.mat.roughness),
+		standerdD(obj.mat.roughness),standerdD(obj.mat.roughness));
 	normal = normal.normalize();
 	vec3 reflect_dir = ray.dir - 2*(dot(normal,ray.dir))*normal;
 	Ray second_ray(obj.i_point + obj.normal*EPSILON,reflect_dir,ray.bounce - 1);
@@ -175,8 +178,8 @@ RGBA reflectionLight(const Ray& ray,const ObjectInfo& obj){
 		shine = RGB(0.0,0.0,0.0);
 		trans = RGB(0.0,0.0,0.0);
 	}else{
-		shine = second_obj.shine;
-		trans = second_obj.trans;
+		shine = second_obj.mat.shininess;
+		trans = second_obj.mat.trans;
 	}
 
 	RGBA color,diffuse,reflect,refract;
@@ -212,10 +215,10 @@ RGBA reflectionLight(const Ray& ray,const ObjectInfo& obj){
  * 	 	 the ray is inside the object.
  */
 RGBA refractionLight(const Ray& ray,const ObjectInfo& obj){
-	if(obj.trans == RGB(0.0,0.0,0.0) || ray.bounce <= 0) return RGBA();
+	if(obj.mat.trans == RGB(0.0,0.0,0.0) || ray.bounce <= 0) return RGBA();
 	vec3 refract_dir;
 	Ray inside_ray,final_ray;
-	double ior = 1 / obj.ior;
+	double ior = 1 / obj.mat.ior;
 	vec3 dir = ray.dir;
 	vec3 normal = obj.normal.normalize();
 	point3 i_point = obj.i_point;
@@ -231,7 +234,7 @@ RGBA refractionLight(const Ray& ray,const ObjectInfo& obj){
 		//The object that the light goes out,usually the same sphere
 		ObjectInfo other_obj = hitNearest(inside_ray);
 		normal = other_obj.normal.normalize();
-		ior = other_obj.ior;
+		ior = other_obj.mat.ior;
 		dir = inside_ray.dir;
 		i_point = other_obj.i_point;
 		k = 1.0 - ior * ior * (1.0 - std::pow(dot(normal,dir),2));
@@ -244,8 +247,8 @@ RGBA refractionLight(const Ray& ray,const ObjectInfo& obj){
 		shine = RGB(0.0,0.0,0.0);
 		trans = RGB(0.0,0.0,0.0);
 	}else{
-		shine = final_obj.shine;
-		trans = final_obj.trans;
+		shine = final_obj.mat.shininess;
+		trans = final_obj.mat.trans;
 	}
 
 	RGBA color,diffuse,reflect,refract;
@@ -286,11 +289,11 @@ RGBA globalIllumination(const ObjectInfo& obj,int gi_bounce){
 		diffuse = diffuseLight(gi_obj);
 		reflect = reflectionLight(gi_ray,gi_obj);
 		refract = refractionLight(gi_ray,gi_obj);
-		gi_color = gi_obj.color * globalIllumination(gi_obj,gi_bounce - 1);
+		gi_color = gi_obj.mat.color * globalIllumination(gi_obj,gi_bounce - 1);
 		//mix the colors
-		color = gi_obj.shine * reflect + 
-				(RGB(1,1,1) - gi_obj.shine) * gi_obj.trans * refract + 
-				(RGB(1,1,1) - gi_obj.shine) * (RGB(1,1,1) - gi_obj.trans)*(diffuse + gi_color);
+		color = gi_obj.mat.shininess * reflect + 
+				(RGB(1,1,1) - gi_obj.mat.shininess) * gi_obj.mat.trans * refract + 
+				(RGB(1,1,1) - gi_obj.mat.shininess) * (RGB(1,1,1) - gi_obj.mat.trans)*(diffuse + gi_color);
 		color.a = 1.0;
 	}else hitMiss(); //hitMiss() does nothing
 	return color;
@@ -312,11 +315,7 @@ ObjectInfo checkPlane(Ray& ray, bool exit_early){
 	double t_sol = INT_MAX;
 	point3 p_sol;
 	vec3 nor;
-	RGB p_color;
-	RGB shine;
-	RGB trans;
-	double ior = 1.458;
-	double rough = 0;
+	Materials mats;
 	for(auto& plane:planes){
 		double t = dot((plane.point - ray.eye),plane.nor) / (dot(ray.dir,plane.nor));
 		if(t <= 0) continue;
@@ -324,16 +323,12 @@ ObjectInfo checkPlane(Ray& ray, bool exit_early){
 		if(t < t_sol && t > EPSILON){
 			t_sol = t;
 			p_sol = intersection_point;
-			p_color = plane.color;
 			nor = (dot(plane.nor,ray.dir) < 0) ? plane.nor : -plane.nor;
-			shine = plane.shininess;
-			trans = plane.trans;
-			ior = plane.ior;
-			rough = plane.roughness;
+			mats = plane.mat;
 		}
 	}
 	if(t_sol >= INT_MAX - 10) return ObjectInfo(); 
-	return ObjectInfo(t_sol,p_sol,nor,p_color,shine,trans,ior,rough); 
+	return ObjectInfo(t_sol,p_sol,nor,mats); 
 }
 
 
