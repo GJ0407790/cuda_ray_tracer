@@ -6,13 +6,16 @@ The [Doxygen Documentation](https://www.jin3472.com/index.html) is here.
 
 ## Roadmap
 
-- [ ] Full Doxygen comment support
+- [x] Reflection
+- [x] Refraction(Transparency)
+- [x] Bounding volume hierarchy
+- [x] Global illumination
+- [x] Doxygen comment support
+- [ ] Specular Lighting(Blinn–Phong)
 - [ ] GPU-friendly BVH Tree and general data structure
 - [ ] CUDA acceleration
 - [ ] .obj reader
-- [ ] Real-time render to Windows with glfw
 - [ ] Photon Mapping
-- [ ] Specular reflection(Blinn-Pong)
 - [ ] Glossy specular reflection(BRDF)
 - [ ] Denosing
 - [ ] More?
