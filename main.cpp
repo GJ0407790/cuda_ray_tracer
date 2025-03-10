@@ -8,23 +8,30 @@
  * @copyright Copyright (c) 2024
  * 
  */
-#include "include/all.hpp"
 #include <iostream>
+
+#include "include/config.hpp"
+#include "include/draw.hpp"
+#include "include/parse.hpp"
+
 using std::cout;
 using std::endl;
+
+Config config;
 
 int main(int argc, char* argv[]){
     if(argc != 2){
         std::cerr << "Use case: make run file=your/file.txt" << endl;
         exit(1);
     }
+
     //parse the inputs
-    parseInput(argv);
+    parseInput(argv, config);
     
     //create the image
-    Image img(width,height);
+    Image img(config.width, config.height);
     
     render(img);
     
-    img.save(filename.c_str());
+    img.save(config.filename.c_str());
 }

@@ -32,5 +32,8 @@
 *.app
 *.ps1
 
+# VS code metadata
+.vscode/
+
 docs/doxygen
 Doxyfile

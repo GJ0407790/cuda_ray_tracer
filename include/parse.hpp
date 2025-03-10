@@ -15,8 +15,10 @@
 #include <sstream>
 #include <vector>
 
-void parseInput(char* argv[]);
+#include "config.hpp"
 
-void parseLine(std::vector<std::string> words);
+void parseInput(char* argv[], Config& config);
+
+void parseLine(std::vector<std::string> words, Config& config);
 
 #endif

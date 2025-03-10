@@ -8,8 +8,12 @@
  * @copyright Copyright (c) 2024
  * 
  */
-#include "../include/all.hpp"
+#include "../include/config.hpp"
+#include "../include/helper.hpp"
+#include "../include/struct.hpp"
+
 #include <random>
+
 using std::sqrt;
 using std::pow;
 using std::cos;
@@ -17,6 +21,9 @@ using std::sin;
 
 #define M_PI 3.14159265358979323846
 #define EPSILON 0.001
+
+extern Config config;
+
 /**
  * @brief Construct a Ray object with the xy location of the coordinates
  * @param x width location of the pixel
@@ -24,32 +31,37 @@ using std::sin;
  * @details Only for primary ray generation.
  */
 Ray::Ray(double x,double y){
-	double sx = (2.0f * x - width) / std::max(width,height);
-	double sy = (height - 2.0f * y) / std::max(width,height);
-	this->eye = ::eye;
-	if(fisheye) dir = (sx * right + sy * up) + sqrt(1-pow(sx,2)-pow(sy,2)) * forward;
-	else if(panorama){
+	auto max_dim = std::max(config.width, config.height);
+	
+	double sx = (2.0f * x - config.width) / max_dim;
+	double sy = (config.height - 2.0f * y) / max_dim;
+	
+	this->eye = config.eye;
+	
+	if(config.fisheye) {
+		dir = (sx * config.right + sy * config.up) + sqrt(1-pow(sx,2)-pow(sy,2)) * config.forward;
+	} else if (config.panorama) {
 		//re-map the sx and sy
-		sx = (double)x / (double)width;
-		sy = (double)y / (double)height;
+		sx = (double)x / (double) config.width;
+		sy = (double)y / (double) config.height;
 		//x to 360 deg, y to 180 deg
 		double theta = (sx - 0.5f) * 2.0f * M_PI;
 		double phi = (sy - 0.5f) * M_PI;
 		//adjust to normal cylindrical projection
-		dir = cos(phi) * (cos(theta) * forward + sin(theta) * right) - sin(phi) * up;
+		dir = cos(phi) * (cos(theta) * config.forward + sin(theta) * config.right) - sin(phi) * config.up;
 		dir = dir.normalize();
 	//depth of field primary ray
-	}else if(dof_focus != 0){
+	}else if(config.dof_focus != 0){
 		double theta = randD(0,2*M_PI);
-		double r = randD(0,dof_lens);
+		double r = randD(0, config.dof_lens);
 		double x = r * std::cos(theta); double y = r * std::sin(theta);
-		this->eye = this->eye + x * up + y * right;
-		vec3 old_dir = forward + sx * right + sy * up;
-		dir = (::eye + old_dir.normalize() * dof_focus - this->eye) / dof_focus;
+		this->eye = this->eye + x * config.up + y * config.right;
+		vec3 old_dir = config.forward + sx * config.right + sy * config.up;
+		dir = (config.eye + old_dir.normalize() * config.dof_focus - this->eye) / config.dof_focus;
 	}
 	//regular pixel mapping
-	else dir = forward + sx * right + sy * up;
-	bounce = bounces;
+	else dir = config.forward + sx * config.right + sy * config.up;
+	bounce = config.bounces;
 	dir = dir.normalize();
 }
 

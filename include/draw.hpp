@@ -10,9 +10,9 @@
  */
 #ifndef DRAW_H
 #define DRAW_H
+
 #include "libpng.h"
 #include "helper.hpp"
-#include "keywords.hpp"
 #include "struct.hpp"
 
 #include <vector>

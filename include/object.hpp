@@ -10,6 +10,7 @@
  */
 #ifndef OBJECT_H
 #define OBJECT_H
+
 #include "struct.hpp"
 
 #include <algorithm>
@@ -65,10 +66,12 @@ public:
  */
 class Object{
 public:
+	virtual ~Object() {} // needed so that the derived class destructor will be called
+
 	AABB bbox; //!< Axis-aligned bounding box for the Object class. For BVH traversal.
 	virtual ObjectInfo checkObject(Ray& ray) = 0;
 	virtual void setProperties(RGB,RGB,double,double){}
-	virtual AABB getBox() = 0;
+	virtual AABB getBox() const = 0;
 };
 
 /**
@@ -114,7 +117,7 @@ public:
 	 * @brief Get the Axis-aligned bounding box.
 	 * @return AABB Axis-aligned bounding box
 	 */
-	AABB getBox() override {return bbox;}
+	AABB getBox() const override {return bbox;}
 	std::tuple<double,double> sphereUV(const point3& point) const;
 	RGB getColor(const point3& point);
 	/**
@@ -194,7 +197,7 @@ public:
 		bbox = AABB(a.p,b.p,c.p);
 	}
 	ObjectInfo checkObject(Ray& ray) override;
-	AABB getBox() override {return bbox;}
+	AABB getBox() const override {return bbox;}
 	RGB getColor(double b0,double b1,double b2);
 	void setProperties(RGB shine,RGB tran,double ior,double roughness) override {
 	mat.shininess = shine;mat.trans = tran;mat.ior = ior;mat.roughness = roughness;
@@ -232,10 +235,10 @@ public:
 
 class BVH : public Object{
 private:
-    shared_ptr<Object> left;
-    shared_ptr<Object> right;
+    Object* left;
+    Object* right;
 public:
-    BVH(std::vector<shared_ptr<Object>>& objs,int start,int end,int axis){
+    BVH(std::vector<Object*>& objs,int start,int end,int axis){
         auto comp = (axis == 0) ? box_x_compare
                 	: (axis == 1) ? box_y_compare
                     				: box_z_compare;
@@ -252,8 +255,8 @@ public:
 		}else{
 			std::sort(std::begin(objs) + start,std::begin(objs) + end,comp);
 			int mid = start + span/2;
-			left = std::make_shared<BVH>(objs,start,mid,(axis+1)%3);
-            right = std::make_shared<BVH>(objs,mid,end,(axis+1)%3);
+			left = new BVH(objs,start,mid,(axis+1)%3);
+      right = new BVH(objs,mid,end,(axis+1)%3);
 		}
 
 		bbox = AABB(left->getBox(), right->getBox());
@@ -278,25 +281,25 @@ public:
     }
 
 	static bool box_compare(
-        const shared_ptr<Object> a, const shared_ptr<Object> b, int axis_index
+        const Object* a, const Object* b, int axis_index
     ) {
         auto a_axis_interval = a->getBox().getAxis(axis_index);
         auto b_axis_interval = b->getBox().getAxis(axis_index);
         return a_axis_interval.min < b_axis_interval.min;
     }
 
-    static bool box_x_compare (const shared_ptr<Object> a, const shared_ptr<Object> b) {
+    static bool box_x_compare (const Object* a, const Object* b) {
         return box_compare(a, b, 0);
     }
 
-    static bool box_y_compare (const shared_ptr<Object> a, const shared_ptr<Object> b) {
+    static bool box_y_compare (const Object* a, const Object* b) {
         return box_compare(a, b, 1);
     }
 
-    static bool box_z_compare (const shared_ptr<Object> a, const shared_ptr<Object> b) {
+    static bool box_z_compare (const Object* a, const Object* b) {
         return box_compare(a, b, 2);
     }
-	AABB getBox() override {return bbox;}
+	AABB getBox() const override {return bbox;}
     
 };
 

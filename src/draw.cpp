@@ -8,7 +8,10 @@
  * @copyright Copyright (c) 2024
  * 
  */
-#include "../include/all.hpp"
+#include "../include/config.hpp"
+#include "../include/draw.hpp"
+#include "../include/helper.hpp"
+#include "../include/progress.hpp"
 
 #include <cmath>
 #include <algorithm>
@@ -16,7 +19,7 @@
 #include <random>
 #include <omp.h>
 
-
+extern Config config;
 
 #define EPSILON 0.001
 /**
@@ -28,27 +31,27 @@
 void render(Image& img){
 	//loop over all pixels	
 	// Update bar state
-	int totalPixels = width * height;
+	int totalPixels = config.width * config.height;
     ProgressBar progressBar(totalPixels);
 
 	#pragma omp parallel for collapse(2) schedule(dynamic)
-	for(int y = 0; y < height;y++){
-		for(int x = 0; x < width;x++){
+	for(int y = 0; y < config.height; y++) {
+		for(int x = 0; x < config.width; x++) {
 			RGBA rgba;
-			if(aa == 0){
+			if(config.aa == 0) {
 				rgba = shootPrimaryRay((double)x,(double)y);
-				setImageColor(img,rgba,x,y);
-			}else{
+				setImageColor(img, rgba, x, y);
+			} else {
 				RGBA new_rgba;
-				for(int _ = 0;_ < aa;_++){
-					double new_x = x + randD(-0.5,0.5);
-					double new_y = y + randD(-0.5,0.5);
-					new_rgba = new_rgba + shootPrimaryRay(new_x,new_y);
-					setImageColor(img,new_rgba.mean(aa),x,y);
+				for(int i = 0; i < config.aa; i++) {
+					double new_x = x + randD(-0.5, 0.5);
+					double new_y = y + randD(-0.5, 0.5);
+					new_rgba = new_rgba + shootPrimaryRay(new_x, new_y);
+					setImageColor(img, new_rgba.mean(config.aa), x, y);
 				}
 			}
 
-			progressBar.update(y * width + x + 1);
+			progressBar.update(y * config.width + x + 1);
 
 		}
 	}
@@ -78,7 +81,7 @@ RGBA shootPrimaryRay(double x,double y){
 		diffuse = diffuseLight(obj);
 		reflect = reflectionLight(ray,obj);
 		refract = refractionLight(ray,obj);
-		gi_color = obj.mat.color * globalIllumination(obj,gi);
+		gi_color = obj.mat.color * globalIllumination(obj, config.gi);
 		//mix the colors
 		color = obj.mat.shininess * reflect + 
 				(RGB(1,1,1) - obj.mat.shininess) * obj.mat.trans * refract + 
@@ -97,7 +100,7 @@ RGBA shootPrimaryRay(double x,double y){
  */
 ObjectInfo hitNearest(Ray& ray){
 	if(ray.bounce == 0) return ObjectInfo();
-	auto object_tuple = bvh_head->checkObject(ray);
+	auto object_tuple = config.bvh_head->checkObject(ray);
 	auto plane_tuple = checkPlane(ray);
 	auto closest_object = unpackIntersection(object_tuple,plane_tuple);
 	return closest_object;
@@ -127,7 +130,7 @@ RGBA diffuseLight(const ObjectInfo& obj){
 		normal = normal + vec3(standerdD(obj.mat.roughness),
 		standerdD(obj.mat.roughness),standerdD(obj.mat.roughness));
 	normal = normal.normalize();
-	for(auto& light : sun){
+	for(auto& light : config.sun){
 		//Create a shadow ray, check if path blocked
 		Ray shadow_ray(obj.i_point + obj.normal*EPSILON,light.dir,1);
 		auto sunInfo = hitNearest(shadow_ray);
@@ -136,7 +139,7 @@ RGBA diffuseLight(const ObjectInfo& obj){
 		color = color + getColorSun(lambert,obj.mat.color,light.color);
 		}
 		//iterate over all point lights(bulbs)
-	for(auto& light : bulbs){
+	for(auto& light : config.bulbs){
 		//Create a shadow ray, check if path blocked
 		vec3 bulbDir = (light.point - obj.i_point);
 		Ray shadow_ray(obj.i_point + obj.normal*EPSILON,bulbDir,1);
@@ -277,7 +280,7 @@ RGBA refractionLight(const Ray& ray,const ObjectInfo& obj){
  * 			   that well. Will be replaced by something better later.
  */
 RGBA globalIllumination(const ObjectInfo& obj,int gi_bounce){
-	if(gi == 0 || gi_bounce == 0) return RGBA(); //exit if global illumination disabled
+	if(config.gi == 0 || gi_bounce == 0) return RGBA(); //exit if global illumination disabled
 	vec3 normal = obj.normal;
 	point3 i_point = obj.i_point;
 	//sample a point on the unit sphere, with the center being the intersection point
@@ -316,7 +319,7 @@ ObjectInfo checkPlane(Ray& ray, bool exit_early){
 	point3 p_sol;
 	vec3 nor;
 	Materials mats;
-	for(auto& plane:planes){
+	for(auto& plane : config.planes){
 		double t = dot((plane.point - ray.eye),plane.nor) / (dot(ray.dir,plane.nor));
 		if(t <= 0) continue;
 		point3 intersection_point = t * ray.dir + ray.eye;
@@ -330,9 +333,6 @@ ObjectInfo checkPlane(Ray& ray, bool exit_early){
 	if(t_sol >= INT_MAX - 10) return ObjectInfo(); 
 	return ObjectInfo(t_sol,p_sol,nor,mats); 
 }
-
-
-
 
 /**
  * @brief Get the Color of Sun (directional light)

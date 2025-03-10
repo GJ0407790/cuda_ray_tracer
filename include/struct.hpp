@@ -10,12 +10,13 @@
  */
 #ifndef RAY_H
 #define RAY_H
-#include "helper.hpp"
+
 #include "libpng.h"
 #include "vec3.hpp"
 #include "interval.hpp"
-#include <memory>
+
 using std::pow;
+
 /*r,g,b from 0 to 1*/
 class RGB{
 public:

@@ -8,7 +8,9 @@
  * @copyright Copyright (c) 2024
  * 
  */
-#include "../include/all.hpp"
+#include "../include/config.hpp"
+#include "../include/helper.hpp"
+
 #include <iostream>
 #include <cmath>
 #include <algorithm>
@@ -16,6 +18,8 @@
 #include <random>
 
 using namespace std;
+
+extern Config config;
 
 /** 
  * @brief print a string
@@ -71,7 +75,7 @@ double sRGBtoRGB(double l){
  * @param x x coordinate of the pixel.
  * @param y y coordinate of the pixel.
  */
-void setImageColor(Image& img,RGBA rgba,int x,int y){
+void setImageColor(Image& img,RGBA rgba,int x,int y) {
 	auto[r,g,b,a] = rgba;
 	img[y][x].r = RGBtosRGB(r) * 255;
 	img[y][x].g = RGBtosRGB(g) * 255;
@@ -80,8 +84,8 @@ void setImageColor(Image& img,RGBA rgba,int x,int y){
 }
 
 double setExpose(double c){
-	if(expose == INT_MAX) return c;
-	else return 1 - std::exp(-expose * c);
+	if(config.expose == INT_MAX) return c;
+	else return 1 - std::exp(-config.expose * c);
 }
 
 ObjectInfo unpackIntersection(const ObjectInfo& obj,
