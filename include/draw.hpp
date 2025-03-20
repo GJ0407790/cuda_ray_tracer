@@ -1,13 +1,3 @@
-/**
- * @file draw.hpp
- * @author Jin (jinj2@illinois.edu)
- * @brief 
- * @version 0.1
- * @date 2024-11-07
- * 
- * @copyright Copyright (c) 2024
- * 
- */
 #ifndef DRAW_H
 #define DRAW_H
 
@@ -18,7 +8,7 @@
 #include <vector>
 #include <tuple>
 
-void render(Image& img);
+void render(RGBA* d_image, int img_width, int img_height, int aa);
 
 RGBA shootPrimaryRay(double x,double y);
 

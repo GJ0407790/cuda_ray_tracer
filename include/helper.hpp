@@ -1,17 +1,7 @@
-/**
- * @file helper.hpp
- * @author Jin (jinj2@illinois.edu)
- * @brief 
- * @version 0.1
- * @date 2024-11-06
- * 
- * @copyright Copyright (c) 2024
- * 
- */
 #ifndef HELPER_HPP
 #define HELPER_HPP
 
-#include "vec3.hpp"
+#include "vec3.cuh"
 #include "struct.hpp"
 #include "object.hpp"
 #include "libpng.h"

@@ -1,7 +1,7 @@
 CXX = g++
 CXXFLAGS = -std=c++17 -Ofast -Wall -fopenmp
 LIBS = -lpng 
-TARGET = raytracer.exe
+TARGET = raytracer
 
 # Source files
 SRC = main.cpp $(wildcard src/*.cpp) $(wildcard lib/*.c)

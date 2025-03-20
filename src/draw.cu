@@ -1,17 +1,6 @@
-/**
- * @file draw.cpp
- * @author Jin (jinj2@illinois.edu)
- * @brief 
- * @version 0.1
- * @date 2024-11-07
- * 
- * @copyright Copyright (c) 2024
- * 
- */
 #include "../include/config.hpp"
 #include "../include/draw.hpp"
 #include "../include/helper.hpp"
-#include "../include/progress.hpp"
 
 #include <cmath>
 #include <algorithm>
@@ -22,40 +11,49 @@
 extern Config config;
 
 #define EPSILON 0.001
-/**
- * @brief The render function that loops over the screen of pixels.
- * @param img The image to render on.
- * @details	Loops over all pixels in the canvas and shoots a primary ray
- * 			at that pixel. Shoot multiple rays if anti-alising is on.
- */
-void render(Image& img){
-	//loop over all pixels	
-	// Update bar state
-	int totalPixels = config.width * config.height;
-    ProgressBar progressBar(totalPixels);
 
-	#pragma omp parallel for collapse(2) schedule(dynamic)
-	for(int y = 0; y < config.height; y++) {
-		for(int x = 0; x < config.width; x++) {
-			RGBA rgba;
-			if(config.aa == 0) {
-				rgba = shootPrimaryRay((double)x,(double)y);
-				setImageColor(img, rgba, x, y);
-			} else {
-				RGBA new_rgba;
-				for(int i = 0; i < config.aa; i++) {
-					double new_x = x + randD(-0.5, 0.5);
-					double new_y = y + randD(-0.5, 0.5);
-					new_rgba = new_rgba + shootPrimaryRay(new_x, new_y);
-					setImageColor(img, new_rgba.mean(config.aa), x, y);
-				}
-			}
+__global__ void render_kernel(RGBA* d_image, int img_width, int img_height, int aa)
+{
+	const int tid = blockDim.x * blockIdx.x + threadIdx.x;
 
-			progressBar.update(y * config.width + x + 1);
-
-		}
+	if (tid >= img_height * img_width)
+	{
+		return; // out of bounds
 	}
-	progressBar.finish();
+
+	const int w = tid % img_width; // width
+	const int h = tid / img_width; // height
+
+	RGBA rgba;
+	if (aa == 0)
+	{
+		rgba = shootPrimaryRay((double)w, (double)h);
+	}
+	else
+	{
+		RGBA new_rgba;
+		for(int i = 0; i < config.aa; i++) 
+		{
+			double new_w = w + randD(-0.5, 0.5);
+			double new_h = h + randD(-0.5, 0.5);
+			new_rgba = new_rgba + shootPrimaryRay(new_w, new_h);
+		}
+
+		rgba = new_rgba.mean(config.aa);
+	}
+
+	d_image[h * img_width + w].r = RGBtosRGB(rgba.r) * 255;
+	d_image[h * img_width + w].g = RGBtosRGB(rgba.g) * 255;
+	d_image[h * img_width + w].b = RGBtosRGB(rgba.b) * 255;
+	d_image[h * img_width + w].a = RGBtosRGB(rgba.a) * 255;
+}
+
+void render(RGBA* d_image, const int img_width, const int img_height, const int aa)
+{
+	constexpr int block_size = 128;
+	int grid_size = (img_width * img_height - 1) / block_size + 1;
+
+	render_kernel<<<grid_size, block_size>>>(d_image, img_width, img_height, aa);
 }
 
 /**
@@ -88,7 +86,9 @@ RGBA shootPrimaryRay(double x,double y){
 				(RGB(1,1,1) - obj.mat.shininess) * 
 				(RGB(1,1,1) - obj.mat.trans) * (diffuse + gi_color);
 		color.a = 1.0;
-	}else hitMiss(); //hitMiss() does nothing
+	} else {
+		hitMiss(); //hitMiss() does nothing
+	} 
 
 	return color;
 }

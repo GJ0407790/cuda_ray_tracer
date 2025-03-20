@@ -17,8 +17,8 @@
 
 #include "config.hpp"
 
-void parseInput(char* argv[], Config& config);
+void parseInput(char* argv[], StlConfig& config);
 
-void parseLine(std::vector<std::string> words, Config& config);
+void parseLine(std::vector<std::string> words, StlConfig& config);
 
 #endif

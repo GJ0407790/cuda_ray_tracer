@@ -16,16 +16,16 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <vector>
 #include <memory>
+#include <vector>
 
 using std::string;
 using std::vector;
 using std::shared_ptr;
 
-extern Config config;
+extern RawConfig config;
 
-void parseInput(char* argv[], Config& config){
+void parseInput(char* argv[], StlConfig& config){
 	std::string filePath = argv[1];
 	
 	//The grading server and my local environment have different input locations
@@ -48,10 +48,10 @@ void parseInput(char* argv[], Config& config){
 		parseLine(words, config);
 	}
 
-	config.bvh_head = new BVH(config.objects, 0, config.objects.size(), 0);
+	config.bvh_head = std::make_shared<BVH>(config.objects, 0, config.objects.size(), 0);
 }
 
-void parseLine(std::vector<std::string> words, Config& config){
+void parseLine(std::vector<std::string> words, StlConfig& config){
 	//return on empty line
 	if(words.empty()) return;
 	
@@ -147,18 +147,18 @@ void parseLine(std::vector<std::string> words, Config& config){
 	/*----------------*/
 	else if(words[0] == "sphere" && words.size() == 5){
 		double x,y,z,r;
-		Object* s;
+		shared_ptr<Object> s;
 
 		x = stof(words[1]);y = stof(words[2]);
 		z = stof(words[3]);r = stof(words[4]);
 
 		if(config.texture != "none")
 		{
-			s = new Sphere(x,y,z,r,config.texture);
+			s = std::make_shared<Sphere>(x,y,z,r,config.texture);
 		}
 		else
 		{ 
-			s = new Sphere(x,y,z,r,config.color);
+			s = std::make_shared<Sphere>(x,y,z,r,config.color);
 		}
 
 		s->setProperties(config.shine, config.trans, config.ior, config.rough);
@@ -184,18 +184,18 @@ void parseLine(std::vector<std::string> words, Config& config){
 	else if(words[0] == "tri" && words.size() == 4){
 		double i,j,k;
 		int size = config.vertices.size();
-		Object* t;
+		shared_ptr<Object> t;
 		i = (stoi(words[1]) > 0) ? stoi(words[1]) - 1 : size + stoi(words[1]);
 		j = (stoi(words[2]) > 0) ? stoi(words[2]) - 1 : size + stoi(words[2]);
 		k = (stoi(words[3]) > 0) ? stoi(words[3]) - 1 : size + stoi(words[3]);
 		
 		if(config.texture != "none")
 		{
-			t = new Triangle(config.vertices[i], config.vertices[j], config.vertices[k], config.texture);
+			t = std::make_shared<Triangle>(config.vertices[i], config.vertices[j], config.vertices[k], config.texture);
 		}
 		else
 		{
-			t = new Triangle(config.vertices[i], config.vertices[j], config.vertices[k], config.color);
+			t = std::make_shared<Triangle>(config.vertices[i], config.vertices[j], config.vertices[k], config.color);
 		} 
 
 		t->setProperties(config.shine,config.trans,config.ior,config.rough); //might break texture here!

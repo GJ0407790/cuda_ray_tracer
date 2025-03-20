@@ -12,7 +12,7 @@
 #define RAY_H
 
 #include "libpng.h"
-#include "vec3.hpp"
+#include "vec3.cuh"
 #include "interval.hpp"
 
 using std::pow;
