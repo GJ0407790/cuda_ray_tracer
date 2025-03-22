@@ -10,7 +10,7 @@
 
 #include <png.h>
 #include <stdlib.h>
-#include "../include/libpng.h"
+#include "libpng.h"
 
 image_t *load_image(const char *filename) {
   png_structp ps = NULL;

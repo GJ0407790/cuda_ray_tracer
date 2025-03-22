@@ -1,8 +1,10 @@
 #include <iostream>
 
-#include "include/config.hpp"
-#include "include/draw.hpp"
-#include "include/parse.hpp"
+#include "config.hpp"
+#include "config_utils.cuh"
+#include "draw.cuh"
+#include "parse.hpp"
+#include "libpng.h"
 
 using std::cout;
 using std::endl;
@@ -18,9 +20,6 @@ using std::endl;
         }                                                                  \
     }
 
-
-__constant__ RawConfig config;
-
 int main(int argc, char* argv[]){
 	if(argc != 2)
 	{
@@ -32,16 +31,24 @@ int main(int argc, char* argv[]){
 	//parse the inputs into host config
 	parseInput(argv, host_stl_config);
 
-	RawConfig host_raw_config(host_stl_config);
+	RawConfig host_raw_config;
+	// init from stl config
+	initRawConfigFromStl(host_stl_config, host_raw_config);
+	
+	// device allocations
+	copyRawConfigToDevice(host_raw_config);
+	CUDA_CHECK(cudaPeekAtLastError());
 
-	// copy config to gpu constant memory
-	CUDA_CHECK(cudaMemcpyToSymbol(config, &host_raw_config, sizeof(RawConfig)));
+	// copy config to gpu
+	RawConfig* d_raw_config;
+	CUDA_CHECK(cudaMalloc(&d_raw_config, sizeof(RawConfig)));
+	CUDA_CHECK(cudaMemcpy(d_raw_config, &host_raw_config, sizeof(RawConfig), cudaMemcpyHostToDevice));
 
 	// create the rgba array in gpu
 	RGBA* d_image;
 	CUDA_CHECK(cudaMalloc(&d_image, host_stl_config.width * host_stl_config.height * sizeof(RGBA)));
 
-	render(d_image, host_stl_config.width, host_stl_config.height, host_stl_config.aa);
+	render(d_image, host_stl_config.width, host_stl_config.height, host_stl_config.aa, d_raw_config);
 	CUDA_CHECK(cudaPeekAtLastError());
 	CUDA_CHECK(cudaDeviceSynchronize());
 
@@ -53,6 +60,12 @@ int main(int argc, char* argv[]){
 	std::string output_path = std::string(getenv("SLURM_TMPDIR")) + "/" + host_stl_config.filename;
 	img.save(output_path.c_str());
 
+	// free host memory
+	freeStlConfig(host_stl_config);
+
 	// free gpu memory
 	CUDA_CHECK(cudaFree(d_image));
+	CUDA_CHECK(cudaFree(d_raw_config));
+	freeRawConfigDeviceMemory(host_raw_config);
+	CUDA_CHECK(cudaPeekAtLastError());
 }

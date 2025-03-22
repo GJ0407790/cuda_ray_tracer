@@ -1,31 +1,45 @@
-CXX = g++
-CXXFLAGS = -std=c++17 -Ofast -Wall -fopenmp
-LIBS = -lpng 
-TARGET = raytracer
+# CUDA compiler and standard C++ compiler
+NVCC    = nvcc
+CXX     = g++
+
+# CUDA-specific flags for .cu files
+CUFLAGS = -O3 -std=c++17 -arch=sm_80 -rdc=true -Iinclude
+
+# Host C++ flags for .cpp files
+CXXFLAGS = -O3 -std=c++17 -Iinclude
+
+# Directories
+SRC_DIR  = src
 
 # Source files
-SRC = main.cpp $(wildcard src/*.cpp) $(wildcard lib/*.c)
+CU_SRCS  = $(wildcard $(SRC_DIR)/*.cu) main.cu
+CPP_SRCS = $(wildcard $(SRC_DIR)/*.cpp)
 
 # Object files
-OBJ = $(SRC:.cpp=.o)
+CU_OBJS  = $(CU_SRCS:.cu=.cu.o)
+CPP_OBJS = $(CPP_SRCS:.cpp=.cpp.o)
+OBJS     = $(CU_OBJS) $(CPP_OBJS)
 
-.PHONY: build run clean
+# Final executable
+TARGET   = raytracer
 
-# Build command
-build: $(TARGET)
+# Default build
+all: $(TARGET)
 
-$(TARGET): $(OBJ)
-	$(CXX) $(CXXFLAGS) -o $(TARGET) $(OBJ) $(LIBS)
+# Linking final executable (with nvcc so device relocatable code is linked properly)
+$(TARGET): $(OBJS)
+	$(NVCC) $(CUFLAGS) -o $@ $^ -lpng
 
-# Compile source files
-%.o: %.cpp
+# CUDA compile rule for .cu -> .cu.o
+%.cu.o: %.cu
+	$(NVCC) $(CUFLAGS) -c $< -o $@
+
+# Host compile rule for .cpp -> .cpp.o
+%.cpp.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# Run command with file input
-run: $(TARGET)
-	./$(TARGET) $(file)
-
-# Clean command
+# Clean
 clean:
-	rm -f $(OBJ) $(TARGET)
-	rm -f ./*.png	
+	rm -f $(TARGET) *.o $(SRC_DIR)/*.o
+
+.PHONY: all clean

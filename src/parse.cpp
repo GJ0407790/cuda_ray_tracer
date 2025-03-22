@@ -1,16 +1,6 @@
-/**
- * @file parse.cpp
- * @author Jin (jinj2@illinois.edu)
- * @brief 
- * @version 0.1
- * @date 2024-11-06
- * 
- * @copyright Copyright (c) 2024
- * 
- */
-#include "../include/config.hpp"
-#include "../include/helper.hpp"
-#include "../include/parse.hpp"
+#include "config.hpp"
+#include "helper.cuh"
+#include "parse.hpp"
 
 #include <string>
 #include <iostream>
@@ -23,18 +13,17 @@ using std::string;
 using std::vector;
 using std::shared_ptr;
 
-extern RawConfig config;
-
-void parseInput(char* argv[], StlConfig& config){
+void parseInput(char* argv[], StlConfig& config)
+{
 	std::string filePath = argv[1];
 	
 	//The grading server and my local environment have different input locations
 	std::ifstream input(filePath);
 	if (!input.is_open())input.open("input/" + filePath);
 	//Check if the file opened successfully
+	
 	if(!input){
-		printErr("Error opening file " + filePath);
-		printErr("Check if the file exists.");
+		printf("Error opening file...");
 		exit(1);
 	}
 
@@ -48,10 +37,12 @@ void parseInput(char* argv[], StlConfig& config){
 		parseLine(words, config);
 	}
 
-	config.bvh_head = std::make_shared<BVH>(config.objects, 0, config.objects.size(), 0);
+	BVH* bvh_head = new BVH(config.objects, 0, config.objects.size(), 0);
+	config.bvh_head = new Object(ObjectType::BVH, bvh_head);
 }
 
-void parseLine(std::vector<std::string> words, StlConfig& config){
+void parseLine(std::vector<std::string> words, StlConfig& config)
+{
 	//return on empty line
 	if(words.empty()) return;
 	
@@ -118,12 +109,6 @@ void parseLine(std::vector<std::string> words, StlConfig& config){
 		b = stof(words[3]);
 		config.color = {r,g,b};
 	}
-	else if(words[0] == "texcoord" && words.size() == 3){
-		config.texcoord = {stof(words[1]),stof(words[2])};
-	}
-	else if(words[0] == "texture" && words.size() == 2){
-		config.texture = words[1];
-	}
 	else if(words[0] == "roughness" && words.size() == 2){
 		config.rough = stof(words[1]);
 	}
@@ -147,78 +132,66 @@ void parseLine(std::vector<std::string> words, StlConfig& config){
 	/*----------------*/
 	else if(words[0] == "sphere" && words.size() == 5){
 		double x,y,z,r;
-		shared_ptr<Object> s;
+		Sphere* s;
 
 		x = stof(words[1]);y = stof(words[2]);
 		z = stof(words[3]);r = stof(words[4]);
-
-		if(config.texture != "none")
-		{
-			s = std::make_shared<Sphere>(x,y,z,r,config.texture);
-		}
-		else
-		{ 
-			s = std::make_shared<Sphere>(x,y,z,r,config.color);
-		}
+		s = new Sphere(x,y,z,r,config.color);
 
 		s->setProperties(config.shine, config.trans, config.ior, config.rough);
-		config.objects.push_back(s);
+		
+		auto obj = new Object(ObjectType::Sphere, s);
+		config.objects.push_back(obj);
 	}
 	else if(words[0] == "plane" && words.size() == 5){
 		double a,b,c,d;
 		a = stof(words[1]);b = stof(words[2]);
 		c = stof(words[3]);d = stof(words[4]);
-		Plane p(a,b,c,d,config.color);
-		p.setProperties(config.shine,config.trans,config.ior,config.rough);
-		config.planes.push_back(std::move(p));
+		Plane* p = new Plane(a,b,c,d,config.color);
+		p->setProperties(config.shine,config.trans,config.ior,config.rough);
+		config.planes.push_back(p);
 	}
 	/*Vertices*/
 	else if(words[0] == "xyz" && words.size() == 4){
 		double x,y,z;
 		x = stof(words[1]);y = stof(words[2]);
 		z = stof(words[3]);
-		Vertex vert(x,y,z,config.texcoord);
-		config.vertices.push_back(std::move(vert));
+		Vertex* vert = new Vertex(x,y,z);
+		config.vertices.push_back(vert);
 	}
 	/*Triangle index*/
 	else if(words[0] == "tri" && words.size() == 4){
 		double i,j,k;
 		int size = config.vertices.size();
-		shared_ptr<Object> t;
+		Triangle* t;
 		i = (stoi(words[1]) > 0) ? stoi(words[1]) - 1 : size + stoi(words[1]);
 		j = (stoi(words[2]) > 0) ? stoi(words[2]) - 1 : size + stoi(words[2]);
 		k = (stoi(words[3]) > 0) ? stoi(words[3]) - 1 : size + stoi(words[3]);
-		
-		if(config.texture != "none")
-		{
-			t = std::make_shared<Triangle>(config.vertices[i], config.vertices[j], config.vertices[k], config.texture);
-		}
-		else
-		{
-			t = std::make_shared<Triangle>(config.vertices[i], config.vertices[j], config.vertices[k], config.color);
-		} 
 
-		t->setProperties(config.shine,config.trans,config.ior,config.rough); //might break texture here!
-		config.objects.push_back(t);
+		t = new Triangle(*config.vertices[i], *config.vertices[j], *config.vertices[k], config.color);
+		t->setProperties(config.shine,config.trans,config.ior,config.rough); 
+		
+		auto obj = new Object(ObjectType::Triangle, t);
+		config.objects.push_back(obj);
 	}
 	else if(words[0] == "sun" && words.size() == 4){
 		double x,y,z;
 		x = stof(words[1]);y = stof(words[2]);
 		z = stof(words[3]);
-		Sun s(x,y,z,config.color);
-		config.sun.push_back(std::move(s));
+		Sun* s = new Sun(x,y,z,config.color);
+		config.sun.push_back(s);
 	}
 	/*Light bulb, a point of light in the scene*/
 	else if(words[0] == "bulb" && words.size() == 4){
 		double x,y,z;
 		x = stof(words[1]);y = stof(words[2]);
 		z = stof(words[3]);
-		Bulb b(x,y,z,config.color);
-		config.bulbs.push_back(std::move(b));
+		Bulb* b = new Bulb(x,y,z,config.color);
+		config.bulbs.push_back(b);
 	}
 	/*Fail case*/
 	else{
-		printErr("One of the lines are not valid.");
+		printf("One of the lines are not valid.");
 		exit(1);
 	}
 

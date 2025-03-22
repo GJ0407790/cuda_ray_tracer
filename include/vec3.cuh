@@ -1,7 +1,8 @@
 #ifndef VEC3_H
 #define VEC3_H
-#include <cmath>
-#include <iostream>
+
+#include <math.h>
+#include <stdio.h>
 
 /*vector direction of a ray*/
 class vec3{
@@ -19,14 +20,15 @@ public:
 	}
 
 	__host__ __device__ double operator[](size_t index) const{
-        if (index == 0) return x;
-        else if (index == 1) return y;
-        else if (index == 2) return z;
-        throw std::out_of_range("Index out of range");
-    }
+		if (index == 0) return x;
+		else if (index == 1) return y;
+		else if (index == 2) return z;
 
+		printf("Out of bounds for %zu\n", index);
+		return 0.0;
+  }
 
-		__host__ __device__ vec3 operator+(const vec3& other) const {
+	__host__ __device__ vec3 operator+(const vec3& other) const {
 		return vec3(x+other.x,y+other.y,z+other.z);
 	}
 
@@ -51,7 +53,7 @@ public:
 	}
 
 	__host__ __device__ double length() const {
-		return std::sqrt(x * x + y * y + z * z);
+		return sqrt(x * x + y * y + z * z);
 	}
 
 	__host__ __device__ vec3 normalize() const {
@@ -60,7 +62,8 @@ public:
 			return vec3(0.0, 0.0, 0.0);
 		}
 
-		return vec3(x / mag, y / mag, z / mag);
+		double inv_mag = 1 / mag;
+		return vec3(x * inv_mag, y * inv_mag, z * inv_mag);
 	}
 
 	/**

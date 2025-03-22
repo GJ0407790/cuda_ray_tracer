@@ -1,18 +1,11 @@
-#include "../include/config.hpp"
-#include "../include/draw.hpp"
-#include "../include/helper.hpp"
+#include "draw.cuh"
+#include "helper.cuh"
 
-#include <cmath>
-#include <algorithm>
-#include <climits>
-#include <random>
-#include <omp.h>
-
-extern Config config;
+#include <math.h>
 
 #define EPSILON 0.001
 
-__global__ void render_kernel(RGBA* d_image, int img_width, int img_height, int aa)
+__global__ void render_kernel(RGBA* d_image, int img_width, int img_height, int aa, RawConfig* config)
 {
 	const int tid = blockDim.x * blockIdx.x + threadIdx.x;
 
@@ -21,25 +14,29 @@ __global__ void render_kernel(RGBA* d_image, int img_width, int img_height, int 
 		return; // out of bounds
 	}
 
+	// setup rng state
+	curandState state;
+	curand_init(1234, tid, 0, &state);
+
 	const int w = tid % img_width; // width
 	const int h = tid / img_width; // height
 
 	RGBA rgba;
 	if (aa == 0)
 	{
-		rgba = shootPrimaryRay((double)w, (double)h);
+		rgba = shootPrimaryRay((double)w, (double)h, &state, config);
 	}
 	else
 	{
 		RGBA new_rgba;
-		for(int i = 0; i < config.aa; i++) 
+		for(int i = 0; i < config->aa; i++) 
 		{
-			double new_w = w + randD(-0.5, 0.5);
-			double new_h = h + randD(-0.5, 0.5);
-			new_rgba = new_rgba + shootPrimaryRay(new_w, new_h);
+			double new_w = w + randD(-0.5, 0.5, &state);
+			double new_h = h + randD(-0.5, 0.5, &state);
+			new_rgba = new_rgba + shootPrimaryRay(new_w, new_h, &state, config);
 		}
 
-		rgba = new_rgba.mean(config.aa);
+		rgba = new_rgba.mean(config->aa);
 	}
 
 	d_image[h * img_width + w].r = RGBtosRGB(rgba.r) * 255;
@@ -48,12 +45,12 @@ __global__ void render_kernel(RGBA* d_image, int img_width, int img_height, int 
 	d_image[h * img_width + w].a = RGBtosRGB(rgba.a) * 255;
 }
 
-void render(RGBA* d_image, const int img_width, const int img_height, const int aa)
+void render(RGBA* d_image, const int img_width, const int img_height, const int aa, RawConfig* config)
 {
 	constexpr int block_size = 128;
 	int grid_size = (img_width * img_height - 1) / block_size + 1;
 
-	render_kernel<<<grid_size, block_size>>>(d_image, img_width, img_height, aa);
+	render_kernel<<<grid_size, block_size>>>(d_image, img_width, img_height, aa, config);
 }
 
 /**
@@ -67,26 +64,30 @@ void render(RGBA* d_image, const int img_width, const int img_height, const int 
  * 			refract and global illumination color. The latter three could create
  * 			more rays that will bounce in the scene.
  */
-RGBA shootPrimaryRay(double x,double y){
+__device__ RGBA shootPrimaryRay(double x, double y, curandState* state, RawConfig* config){
 	//create a ray
-	Ray ray(x,y);
+	Ray ray(x, y, state, config);
 	
 	//loop over all objects in the scene
-	ObjectInfo obj = hitNearest(ray);
+	ObjectInfo obj = hitNearest(ray, config);
 
 	RGBA color,diffuse,reflect,refract,gi_color;
-	if(obj.isHit){ //hit
-		diffuse = diffuseLight(obj);
-		reflect = reflectionLight(ray,obj);
-		refract = refractionLight(ray,obj);
-		gi_color = obj.mat.color * globalIllumination(obj, config.gi);
+	if(obj.isHit)
+	{ //hit
+		diffuse = diffuseLight(obj, state, config);
+		reflect = reflectionLight(ray,obj, state, config);
+		refract = refractionLight(ray,obj, state, config);
+		gi_color = obj.mat.color * globalIllumination(obj, config->gi, state, config);
+
 		//mix the colors
 		color = obj.mat.shininess * reflect + 
 				(RGB(1,1,1) - obj.mat.shininess) * obj.mat.trans * refract + 
 				(RGB(1,1,1) - obj.mat.shininess) * 
 				(RGB(1,1,1) - obj.mat.trans) * (diffuse + gi_color);
 		color.a = 1.0;
-	} else {
+	} 
+	else 
+	{
 		hitMiss(); //hitMiss() does nothing
 	} 
 
@@ -98,10 +99,10 @@ RGBA shootPrimaryRay(double x,double y){
  * @param ray The ray to trace.
  * @return ObjectInfo All the related info for the object, if any is hit.
  */
-ObjectInfo hitNearest(Ray& ray){
+__device__ ObjectInfo hitNearest(Ray& ray, RawConfig* config){
 	if(ray.bounce == 0) return ObjectInfo();
-	auto object_tuple = config.bvh_head->checkObject(ray);
-	auto plane_tuple = checkPlane(ray);
+	auto object_tuple = config->bvh_head->checkObject(ray);
+	auto plane_tuple = checkPlane(ray, false, config);
 	auto closest_object = unpackIntersection(object_tuple,plane_tuple);
 	return closest_object;
 }
@@ -110,7 +111,7 @@ ObjectInfo hitNearest(Ray& ray){
  * @brief Does nothing.
  * @return ObjectInfo A default no-hit objectInfo.
  */
-ObjectInfo hitMiss(){
+__device__ ObjectInfo hitMiss(){
 	return ObjectInfo();
 }
 
@@ -123,33 +124,48 @@ ObjectInfo hitMiss(){
  * 			actual color is found with the lambert light model. If a object totally obstructs
  * 			a shadow ray, that ray does not contribute to the diffuse lighting.
  */
-RGBA diffuseLight(const ObjectInfo& obj){
+__device__ RGBA diffuseLight(const ObjectInfo& obj, curandState* state, RawConfig* config){
 	RGBA color;
 	vec3 normal = obj.normal;
 	if(obj.mat.roughness > 0)
-		normal = normal + vec3(standerdD(obj.mat.roughness),
-		standerdD(obj.mat.roughness),standerdD(obj.mat.roughness));
+	{
+		normal = normal + vec3(standerdD(obj.mat.roughness, state),
+													 standerdD(obj.mat.roughness, state),
+													 standerdD(obj.mat.roughness, state));
+	}
+		
 	normal = normal.normalize();
-	for(auto& light : config.sun){
+
+	for(int i = 0; i < config->num_sun; i++)
+	{
+		auto& light = config->sun[i];
 		//Create a shadow ray, check if path blocked
 		Ray shadow_ray(obj.i_point + obj.normal*EPSILON,light.dir,1);
-		auto sunInfo = hitNearest(shadow_ray);
+		auto sunInfo = hitNearest(shadow_ray, config);
+
 		if(sunInfo.isHit) continue;
-		double lambert = std::max(dot(normal,light.dir.normalize()),0.0);
-		color = color + getColorSun(lambert,obj.mat.color,light.color);
-		}
-		//iterate over all point lights(bulbs)
-	for(auto& light : config.bulbs){
+		
+		double lambert = fmax(dot(normal,light.dir.normalize()),0.0);
+		color = color + getColorSun(lambert, obj.mat.color, light.color, config);
+	}
+	
+	//iterate over all point lights(bulbs)
+	for(int i = 0; i < config->num_sun; i++){
+		auto& light = config->bulbs[i];
 		//Create a shadow ray, check if path blocked
 		vec3 bulbDir = (light.point - obj.i_point);
 		Ray shadow_ray(obj.i_point + obj.normal*EPSILON,bulbDir,1);
-		auto bulbInfo = hitNearest(shadow_ray);
-		if(bulbInfo.isHit){
+		auto bulbInfo = hitNearest(shadow_ray, config);
+
+		if(bulbInfo.isHit)
+		{
 			if(bulbInfo.distance < bulbDir.length()) continue;
 		}
-		double lambert = std::max(dot(normal,bulbDir.normalize()),0.0);
-		color = color + getColorBulb(lambert,obj.mat.color,light.color,bulbDir.length());
+
+		double lambert = fmax(dot(normal,bulbDir.normalize()),0.0);
+		color = color + getColorBulb(lambert,obj.mat.color,light.color,bulbDir.length(), config);
 	}
+
 	return color;
 }
 
@@ -163,18 +179,22 @@ RGBA diffuseLight(const ObjectInfo& obj){
  * 			the scene. If the reflection ray did hit an object, a full light
  * 			calculation is performed to achieve the reflection lighting effect.
  */
-RGBA reflectionLight(const Ray& ray,const ObjectInfo& obj){
+__device__ RGBA reflectionLight(const Ray& ray,const ObjectInfo& obj, curandState* state, RawConfig* config){
 	if(obj.mat.shininess == RGB(0.0,0.0,0.0) || ray.bounce <= 0) return RGBA();
 
 	vec3 normal = obj.normal;
 	if(obj.mat.roughness > 0)
-		normal = normal+vec3(standerdD(obj.mat.roughness),
-		standerdD(obj.mat.roughness),standerdD(obj.mat.roughness));
+	{
+		normal = normal + vec3(standerdD(obj.mat.roughness, state),
+													 standerdD(obj.mat.roughness, state),
+													 standerdD(obj.mat.roughness, state));
+	}
+
 	normal = normal.normalize();
 	vec3 reflect_dir = ray.dir - 2*(dot(normal,ray.dir))*normal;
 	Ray second_ray(obj.i_point + obj.normal*EPSILON,reflect_dir,ray.bounce - 1);
 
-	ObjectInfo second_obj = hitNearest(second_ray);
+	ObjectInfo second_obj = hitNearest(second_ray, config);
 
 	RGB shine,trans;
 	if(ray.bounce == 1){
@@ -187,9 +207,9 @@ RGBA reflectionLight(const Ray& ray,const ObjectInfo& obj){
 
 	RGBA color,diffuse,reflect,refract;
 	if(second_obj.isHit){ //hit
-		diffuse = diffuseLight(second_obj);
-		reflect = reflectionLight(second_ray,second_obj);
-		refract = refractionLight(ray,obj);
+		diffuse = diffuseLight(second_obj, state, config);
+		reflect = reflectionLight(second_ray,second_obj, state, config);
+		refract = refractionLight(ray, obj, state, config);
 		//refract = RGBA(0,0,0,1);
 		//mix the colors
 		color = shine * reflect + 
@@ -217,8 +237,9 @@ RGBA reflectionLight(const Ray& ray,const ObjectInfo& obj){
  * 		 the object itself, and the sphere-intersection could be optimized when
  * 	 	 the ray is inside the object.
  */
-RGBA refractionLight(const Ray& ray,const ObjectInfo& obj){
+__device__ RGBA refractionLight(const Ray& ray, const ObjectInfo& obj, curandState* state, RawConfig* config){
 	if(obj.mat.trans == RGB(0.0,0.0,0.0) || ray.bounce <= 0) return RGBA();
+	
 	vec3 refract_dir;
 	Ray inside_ray,final_ray;
 	double ior = 1 / obj.mat.ior;
@@ -226,44 +247,58 @@ RGBA refractionLight(const Ray& ray,const ObjectInfo& obj){
 	vec3 normal = obj.normal.normalize();
 	point3 i_point = obj.i_point;
 	int bounce = ray.bounce;
-	double k = 1.0 - std::pow(ior,2) * (1.0 - std::pow(dot(normal,dir),2));
-	if(k < 0){ //total internal refraction
+	double k = 1.0 - pow(ior,2) * (1.0 - pow(dot(normal,dir),2));
+	
+	if(k < 0)
+	{ //total internal refraction
 		//use the reflection method instead
 		refract_dir = dir - 2*(dot(normal,dir))*normal;
 		final_ray = Ray(i_point + normal*EPSILON,refract_dir,--bounce);
-	}else{ //refraction inside the object
-		refract_dir = ior * dir - (ior * (dot(normal,dir)) + std::sqrt(k)) * normal;
+	}
+	else
+	{ //refraction inside the object
+		refract_dir = ior * dir - (ior * (dot(normal,dir)) + sqrt(k)) * normal;
 		inside_ray = Ray(i_point - normal*1e-4,refract_dir,bounce);
 		//The object that the light goes out,usually the same sphere
-		ObjectInfo other_obj = hitNearest(inside_ray);
+		ObjectInfo other_obj = hitNearest(inside_ray, config);
+		
 		normal = other_obj.normal.normalize();
 		ior = other_obj.mat.ior;
 		dir = inside_ray.dir;
 		i_point = other_obj.i_point;
-		k = 1.0 - ior * ior * (1.0 - std::pow(dot(normal,dir),2));
-		refract_dir = ior * dir - (ior * (dot(normal,dir)) + std::sqrt(k)) * normal;
+
+		k = 1.0 - ior * ior * (1.0 - pow(dot(normal,dir),2));
+		refract_dir = ior * dir - (ior * (dot(normal,dir)) + sqrt(k)) * normal;
 		final_ray = Ray(i_point - normal*1e-4,refract_dir,--bounce);
 	}
-	ObjectInfo final_obj = hitNearest(final_ray);
+
+	ObjectInfo final_obj = hitNearest(final_ray, config);
 	RGB shine,trans;
-	if(bounce == 0){
+	
+	if(bounce == 0)
+	{
 		shine = RGB(0.0,0.0,0.0);
 		trans = RGB(0.0,0.0,0.0);
-	}else{
+	}
+	else
+	{
 		shine = final_obj.mat.shininess;
 		trans = final_obj.mat.trans;
 	}
 
 	RGBA color,diffuse,reflect,refract;
-	if(final_obj.isHit){ //hit
-		diffuse = diffuseLight(final_obj);
-		reflect = reflectionLight(final_ray,final_obj);
-		refract = refractionLight(final_ray,final_obj);
+
+	if(final_obj.isHit)
+	{ //hit
+		diffuse = diffuseLight(final_obj, state, config);
+		reflect = reflectionLight(final_ray,final_obj, state, config);
+		refract = refractionLight(final_ray,final_obj, state, config);
 		//mix the colors
 		color = shine * reflect + 
 				(RGB(1,1,1) - shine) * trans * refract + 
 				(RGB(1,1,1) - shine) * (RGB(1,1,1) - trans) * diffuse;
-	}else color = RGBA(0,0,0,1);
+	}
+	else color = RGBA(0,0,0,1);
 
 	return color;
 }
@@ -279,29 +314,36 @@ RGBA refractionLight(const Ray& ray,const ObjectInfo& obj){
  * @deprecated This version of global illumination is too slow and does not work
  * 			   that well. Will be replaced by something better later.
  */
-RGBA globalIllumination(const ObjectInfo& obj,int gi_bounce){
-	if(config.gi == 0 || gi_bounce == 0) return RGBA(); //exit if global illumination disabled
+__device__ RGBA globalIllumination(const ObjectInfo& obj, int gi_bounce, curandState* state, RawConfig* config){
+	if(config->gi == 0 || gi_bounce == 0) return RGBA(); //exit if global illumination disabled
+	
 	vec3 normal = obj.normal;
 	point3 i_point = obj.i_point;
 	//sample a point on the unit sphere, with the center being the intersection point
-	vec3 gi_dir = (normal + spherePoint()).normalize();
+	vec3 gi_dir = (normal + spherePoint(state)).normalize();
+	
 	Ray gi_ray(i_point + normal * EPSILON,gi_dir,gi_bounce-1);
-	ObjectInfo gi_obj = hitNearest(gi_ray);
+	ObjectInfo gi_obj = hitNearest(gi_ray, config);
+	
 	RGBA color,diffuse,reflect,refract,gi_color;
-	if(gi_obj.isHit){ //hit
-		diffuse = diffuseLight(gi_obj);
-		reflect = reflectionLight(gi_ray,gi_obj);
-		refract = refractionLight(gi_ray,gi_obj);
-		gi_color = gi_obj.mat.color * globalIllumination(gi_obj,gi_bounce - 1);
+	
+	if(gi_obj.isHit)
+	{ //hit
+		diffuse = diffuseLight(gi_obj, state, config);
+		reflect = reflectionLight(gi_ray,gi_obj, state, config);
+		refract = refractionLight(gi_ray,gi_obj, state, config);
+		gi_color = gi_obj.mat.color * globalIllumination(gi_obj, gi_bounce - 1, state, config);
+		
 		//mix the colors
 		color = gi_obj.mat.shininess * reflect + 
 				(RGB(1,1,1) - gi_obj.mat.shininess) * gi_obj.mat.trans * refract + 
 				(RGB(1,1,1) - gi_obj.mat.shininess) * (RGB(1,1,1) - gi_obj.mat.trans)*(diffuse + gi_color);
 		color.a = 1.0;
-	}else hitMiss(); //hitMiss() does nothing
+	}
+	else hitMiss(); //hitMiss() does nothing
+	
 	return color;
 }
-
 
 /**
  * @brief Check if any planes are intersecting with the ray.
@@ -314,12 +356,15 @@ RGBA globalIllumination(const ObjectInfo& obj,int gi_bounce){
  * 			calculate the intersection point with t.
  *
  */
-ObjectInfo checkPlane(Ray& ray, bool exit_early){
+__device__ ObjectInfo checkPlane(Ray& ray, bool exit_early, RawConfig* config){
 	double t_sol = INT_MAX;
 	point3 p_sol;
 	vec3 nor;
 	Materials mats;
-	for(auto& plane : config.planes){
+
+	for(int i = 0; i < config->num_planes; i++){
+		Plane plane = config->planes[i];
+
 		double t = dot((plane.point - ray.eye),plane.nor) / (dot(ray.dir,plane.nor));
 		if(t <= 0) continue;
 		point3 intersection_point = t * ray.dir + ray.eye;
@@ -344,12 +389,14 @@ ObjectInfo checkPlane(Ray& ray, bool exit_early){
  * 			and get the correct color by blending the colors of the light
  * 			and the object. Also takes care of exposure.
  */
-RGBA getColorSun(double lambert,RGB objColor,RGB lightColor){
+__device__ RGBA getColorSun(double lambert, RGB objColor, RGB lightColor, RawConfig* config)
+{
 	double r,g,b;
 	r = objColor.r * (lightColor.r * lambert);
 	g = objColor.g * (lightColor.g * lambert);
 	b = objColor.b * (lightColor.b * lambert);
-	return RGBA(setExpose(r),setExpose(g),setExpose(b),0.0);
+
+	return RGBA(setExpose(r, config), setExpose(g, config), setExpose(b, config), 0.0);
 }
 
 /**
@@ -363,91 +410,14 @@ RGBA getColorSun(double lambert,RGB objColor,RGB lightColor){
  * 			and the object, and applys light intensity falloff.
  * 			Also takes care of exposure.`
  */
-RGBA getColorBulb(double lambert,RGB objColor,RGB lightColor,double t){
+__device__ RGBA getColorBulb(double lambert, RGB objColor, RGB lightColor, double t, RawConfig* config)
+{
 	double r,g,b;
-	double i = 1.0f / std::pow(t,2);
+	double i = 1.0f / pow(t,2);
+
 	r = objColor.r * (lightColor.r * lambert);
 	g = objColor.g * (lightColor.g * lambert);
 	b = objColor.b * (lightColor.b * lambert);
-	return RGBA(setExpose(r)*i,setExpose(g)*i,setExpose(b)*i,0.0);
+
+	return RGBA(setExpose(r, config) * i, setExpose(g, config) * i, setExpose(b, config) * i, 0.0);
 }
-
-// /**
-//  * @brief Check if a sphere intersects with a given ray.
-//  * @param ray The ray to be checked.
-//  * @param exit_early For shadow checking purposes, exit early if a sphere is in the
-//  *        way, casting shadows. Do not set to true with bulb(light in scene).
-//  * @return std::tuple<double,point3,vec3,RGB> The distance to the sphere(<0 no intersection), the 
-//  *          intersecting point,the normal, the color of the sphere.
-//  * @deprecated 
-//  */
-// ObjectInfo checkSphere(Ray& ray, bool exit_early){
-// 	double t_sol = INT_MAX;
-// 	point3 p_sol;
-// 	vec3 nor;
-// 	RGB s_color;
-// 	for(auto& s_ptr : spheres){
-// 		std::shared_ptr<Sphere> sphere = std::dynamic_pointer_cast<Sphere>(s_ptr);
-// 		vec3 cr0 = (sphere->c - ray.eye);
-// 		bool inside = (pow(cr0.length(),2) < pow(sphere->r,2));
-// 		double tc = cr0.dot(ray.dir) / ray.dir.length();
-
-// 		if(!inside && tc < 0) continue;
-
-// 		vec3 d = ray.eye + (tc * ray.dir) - sphere->c;
-// 		double d2 = pow(d.length(),2);
-
-// 		if(!inside && pow(sphere->r,2) < d2) continue;
-
-// 		//difference between t and tc
-// 		//the two intersecting points are generated
-// 		double t_offset = std::sqrt(pow(sphere->r,2) - d2) / ray.dir.length();
-// 		double t;
-// 		if(inside) t = tc + t_offset;
-// 		else t = tc - t_offset;
-// 		point3 p = t * ray.dir + ray.eye;
-// 		//update when the current sphere is the closest
-// 		if(t < t_sol && t > EPSILON){
-// 			if(exit_early) return ObjectInfo(100,point3(),vec3(),RGB());
-// 			t_sol = t;
-// 			p_sol = p;
-// 			nor = 1/sphere->r * (p_sol - sphere->c);
-// 			s_color = sphere->getColor(p_sol);
-// 		}
-// 	}
-// 	if(t_sol >= INT_MAX - 10) return ObjectInfo();
-// 	return ObjectInfo(t_sol,p_sol,nor,s_color); 
-// }
-
-// /**
-//  * @brief Check if any triangles are intersecting with the ray.
-//  * @param ray The ray to check against.
-//  * @param exit_early For shadow checking purposes, exit early if a triangles is in the
-//  *        way, casting shadows. Do not set to true with bulb(light in scene).
-//  * @return std::tuple<double,point3,vec3,RGB> The distance to the triangle(<0 no intersection), the 
-//  *          intersecting point,the normal, the color of the triangle.
-//  * @deprecated
-//  */
-// ObjectInfo checkTriangle(Ray& ray, bool exit_early){
-// 	double t_sol = INT_MAX;
-// 	point3 p_sol;
-// 	vec3 nor;
-// 	RGB t_color;
-// 	for(auto& tri:triangles){
-// 		double t = dot((tri.p0 - ray.eye),tri.nor) / (dot(ray.dir,tri.nor));
-// 		if(t <= 0) continue;
-// 		point3 intersection_point = t * ray.dir + ray.eye;
-// 		auto [b0,b1,b2] = getBarycentric(tri,intersection_point);
-// 		bool inside = (std::min({b0, b1, b2}) >= -EPSILON);
-// 		if(t < t_sol && t > EPSILON && inside){
-// 			if(exit_early) return ObjectInfo(100,point3(),vec3(),RGB());;
-// 			t_sol = t;
-// 			p_sol = intersection_point;
-// 			t_color = tri.getColor(b0,b1,b2);
-// 			nor = (dot(tri.nor,ray.dir) < 0) ? tri.nor : -tri.nor;
-			
-// 		}
-// 	}
-// 	if(t_sol >= INT_MAX - 10) return ObjectInfo(); 
-// 	return ObjectInfo(t_sol,p_sol,nor,t_color); 
-// }
