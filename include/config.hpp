@@ -87,11 +87,11 @@ struct RawConfig {
   // Pointers to device memory
   Object* bvh_head;
   int num_sun;
-  Sun* sun;
+  Sun** sun;
   int num_bulbs;
-  Bulb* bulbs;
+  Bulb** bulbs;
   int num_planes;
-  Plane* planes;
+  Plane** planes;
 };
 
 #endif // CONFIG_HPP

@@ -17,15 +17,14 @@ void parseInput(char* argv[], StlConfig& config)
 {
 	std::string filePath = argv[1];
 	
-	//The grading server and my local environment have different input locations
 	std::ifstream input(filePath);
-	if (!input.is_open())input.open("input/" + filePath);
-	//Check if the file opened successfully
 	
 	if(!input){
-		printf("Error opening file...");
+		std::cout <<  "Error opening file..."  << std::endl;
 		exit(1);
 	}
+
+	std::cout << "Success in opening file..." << std::endl;
 
 	//read line by line
 	string line;
@@ -191,8 +190,7 @@ void parseLine(std::vector<std::string> words, StlConfig& config)
 	}
 	/*Fail case*/
 	else{
-		printf("One of the lines are not valid.");
+		std::cout << "One of the lines are not valid." << std::endl;
 		exit(1);
 	}
-
 }

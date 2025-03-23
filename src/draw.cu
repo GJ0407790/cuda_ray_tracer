@@ -140,20 +140,20 @@ __device__ RGBA diffuseLight(const ObjectInfo& obj, curandState* state, RawConfi
 	{
 		auto& light = config->sun[i];
 		//Create a shadow ray, check if path blocked
-		Ray shadow_ray(obj.i_point + obj.normal*EPSILON,light.dir,1);
+		Ray shadow_ray(obj.i_point + obj.normal*EPSILON, light->dir,1);
 		auto sunInfo = hitNearest(shadow_ray, config);
 
 		if(sunInfo.isHit) continue;
 		
-		double lambert = fmax(dot(normal,light.dir.normalize()),0.0);
-		color = color + getColorSun(lambert, obj.mat.color, light.color, config);
+		double lambert = fmax(dot(normal, light->dir.normalize()), 0.0);
+		color = color + getColorSun(lambert, obj.mat.color, light->color, config);
 	}
 	
 	//iterate over all point lights(bulbs)
 	for(int i = 0; i < config->num_sun; i++){
 		auto& light = config->bulbs[i];
 		//Create a shadow ray, check if path blocked
-		vec3 bulbDir = (light.point - obj.i_point);
+		vec3 bulbDir = (light->point - obj.i_point);
 		Ray shadow_ray(obj.i_point + obj.normal*EPSILON,bulbDir,1);
 		auto bulbInfo = hitNearest(shadow_ray, config);
 
@@ -163,7 +163,7 @@ __device__ RGBA diffuseLight(const ObjectInfo& obj, curandState* state, RawConfi
 		}
 
 		double lambert = fmax(dot(normal,bulbDir.normalize()),0.0);
-		color = color + getColorBulb(lambert,obj.mat.color,light.color,bulbDir.length(), config);
+		color = color + getColorBulb(lambert, obj.mat.color, light->color,bulbDir.length(), config);
 	}
 
 	return color;
@@ -363,16 +363,16 @@ __device__ ObjectInfo checkPlane(Ray& ray, bool exit_early, RawConfig* config){
 	Materials mats;
 
 	for(int i = 0; i < config->num_planes; i++){
-		Plane plane = config->planes[i];
+		Plane* plane = config->planes[i];
 
-		double t = dot((plane.point - ray.eye),plane.nor) / (dot(ray.dir,plane.nor));
+		double t = dot((plane->point - ray.eye), plane->nor) / (dot(ray.dir, plane->nor));
 		if(t <= 0) continue;
 		point3 intersection_point = t * ray.dir + ray.eye;
 		if(t < t_sol && t > EPSILON){
 			t_sol = t;
 			p_sol = intersection_point;
-			nor = (dot(plane.nor,ray.dir) < 0) ? plane.nor : -plane.nor;
-			mats = plane.mat;
+			nor = (dot(plane->nor, ray.dir) < 0) ? plane->nor : -plane->nor;
+			mats = plane->mat;
 		}
 	}
 	if(t_sol >= INT_MAX - 10) return ObjectInfo(); 

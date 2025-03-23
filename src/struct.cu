@@ -118,28 +118,6 @@ __device__ ObjectInfo Triangle::checkObject(Ray& ray)
 	return ObjectInfo(t, intersection_point, normal, mat); 
 }
 
-// Object class function
-Object::~Object() 
-{
-	if (obj_ptr) 
-	{
-		switch (obj_type) 
-		{
-			case ObjectType::Sphere:
-				delete static_cast<Sphere*>(obj_ptr);
-				break;
-			case ObjectType::Triangle:
-				delete static_cast<Triangle*>(obj_ptr);
-				break;
-			case ObjectType::BVH:
-				delete static_cast<BVH*>(obj_ptr);
-				break;
-			default:
-				break;
-		}
-	}
-}
-
 __host__ __device__ AABB Object::getBox() const
 {
 	if (obj_type == ObjectType::Sphere)

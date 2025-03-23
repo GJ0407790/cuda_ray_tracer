@@ -184,7 +184,7 @@ public:
 		obj_ptr = ptr;
 	}
 
-	~Object();
+	~Object() {};
 
 	__host__ __device__ AABB getBox() const;
 	__host__ __device__ void setProperties(RGB shine, RGB tran, double ior, double roughness);
@@ -421,20 +421,7 @@ public:
 	}
 
 	// need to recursively delete the allocated object
-	~BVH() 
-	{
-    if (left && left->obj_type == ObjectType::BVH)
-		{
-			delete static_cast<BVH*>(left->obj_ptr);
-			delete left;
-    }
-
-    if (right && right->obj_type == ObjectType::BVH) 
-		{
-			delete static_cast<BVH*>(right->obj_ptr);
-			delete right;
-    }
-	}
+	~BVH() {}
     
 	__host__ __device__ AABB getBox() const 
 	{

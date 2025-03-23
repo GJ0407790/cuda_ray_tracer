@@ -3,6 +3,7 @@
 #include "config_utils.cuh"
 #include "parse.hpp"  // if needed for parse or stl -> raw config
 #include <cstring>    // for memcpy if needed
+#include <iostream>
 
 //--------------------------------------
 // 1) initRawConfigFromStl
@@ -35,13 +36,13 @@ void initRawConfigFromStl(const StlConfig& host_stl, RawConfig& out_rc) {
 	if (out_rc.num_sun > 0)
 	{
 		// Allocate a host array of `Sun`
-		Sun* host_array = new Sun[out_rc.num_sun];
+		Sun** host_array = new Sun*[out_rc.num_sun];
 		// Copy each pointed-to Sun from host_stl.sun[i]
 		for (int i = 0; i < out_rc.num_sun; i++) 
 		{
 			// host_stl.sun[i] is a Sun*,
 			// so we dereference it to get a Sun object
-			host_array[i] = *(host_stl.sun[i]);
+			host_array[i] = host_stl.sun[i];
 		}
 		out_rc.sun = host_array; // store host pointer
 	}
@@ -54,10 +55,10 @@ void initRawConfigFromStl(const StlConfig& host_stl, RawConfig& out_rc) {
 	out_rc.num_bulbs = host_stl.bulbs.size();
 	if (out_rc.num_bulbs > 0) 
 	{
-		Bulb* host_array = new Bulb[out_rc.num_bulbs];
+		Bulb** host_array = new Bulb*[out_rc.num_bulbs];
 		for (int i = 0; i < out_rc.num_bulbs; i++)
 		{
-			host_array[i] = *(host_stl.bulbs[i]);
+			host_array[i] = host_stl.bulbs[i];
 		}
 		out_rc.bulbs = host_array;
 	}
@@ -70,10 +71,10 @@ void initRawConfigFromStl(const StlConfig& host_stl, RawConfig& out_rc) {
 	out_rc.num_planes = host_stl.planes.size();
 	if (out_rc.num_planes > 0)
 	{
-		Plane* host_array = new Plane[out_rc.num_planes];
+		Plane** host_array = new Plane*[out_rc.num_planes];
 		for (int i = 0; i < out_rc.num_planes; i++)
 		{
-			host_array[i] = *(host_stl.planes[i]);
+			host_array[i] = host_stl.planes[i];
 		}
 		out_rc.planes = host_array;
 	}
@@ -93,29 +94,53 @@ void initRawConfigFromStl(const StlConfig& host_stl, RawConfig& out_rc) {
 void copyRawConfigToDevice(RawConfig& rc) {
 	if (rc.num_sun > 0 && rc.sun) 
 	{
-		Sun* d_sun = nullptr;
-		cudaMalloc(&d_sun, rc.num_sun * sizeof(Sun));
-		cudaMemcpy(d_sun, rc.sun, rc.num_sun * sizeof(Sun), cudaMemcpyHostToDevice);
-		delete[] rc.sun;
-		rc.sun = d_sun;
+		Sun** d_sun_array = nullptr;
+    cudaMalloc(&d_sun_array, rc.num_sun * sizeof(Sun*));
+
+    for (int i = 0; i < rc.num_sun; i++)
+    {
+			Sun* d_sun_obj = nullptr;
+			cudaMalloc(&d_sun_obj, sizeof(Sun));
+			cudaMemcpy(d_sun_obj, rc.sun[i], sizeof(Sun), cudaMemcpyHostToDevice);
+			cudaMemcpy(&d_sun_array[i], &d_sun_obj, sizeof(Sun*), cudaMemcpyHostToDevice);
+    }
+
+    delete[] rc.sun;
+    rc.sun = d_sun_array;
 	}
 	
 	if (rc.num_bulbs > 0 && rc.bulbs) 
 	{
-		Bulb* d_bulbs = nullptr;
-		cudaMalloc(&d_bulbs, rc.num_bulbs * sizeof(Bulb));
-		cudaMemcpy(d_bulbs, rc.bulbs, rc.num_bulbs * sizeof(Bulb), cudaMemcpyHostToDevice);
-		delete[] rc.bulbs;
-		rc.bulbs = d_bulbs;
+		Bulb** d_bulb_array = nullptr;
+    cudaMalloc(&d_bulb_array, rc.num_bulbs * sizeof(Bulb*));
+
+    for (int i = 0; i < rc.num_bulbs; i++)
+    {
+			Bulb* d_bulb_obj = nullptr;
+			cudaMalloc(&d_bulb_obj, sizeof(Bulb));
+			cudaMemcpy(d_bulb_obj, rc.bulbs[i], sizeof(Bulb), cudaMemcpyHostToDevice);
+			cudaMemcpy(&d_bulb_array[i], &d_bulb_obj, sizeof(Bulb*), cudaMemcpyHostToDevice);
+    }
+
+    delete[] rc.bulbs;
+    rc.bulbs = d_bulb_array;
 	}
 
 	if (rc.num_planes > 0 && rc.planes) 
 	{
-		Plane* d_planes = nullptr;
-		cudaMalloc(&d_planes, rc.num_planes * sizeof(Plane));
-		cudaMemcpy(d_planes, rc.planes, rc.num_planes * sizeof(Plane), cudaMemcpyHostToDevice);
-		delete[] rc.planes;
-		rc.planes = d_planes;
+		Plane** d_plane_array = nullptr;
+    cudaMalloc(&d_plane_array, rc.num_planes * sizeof(Plane*));
+
+    for (int i = 0; i < rc.num_planes; i++)
+    {
+			Plane* d_plane_obj = nullptr;
+			cudaMalloc(&d_plane_obj, sizeof(Plane));
+			cudaMemcpy(d_plane_obj, rc.planes[i], sizeof(Plane), cudaMemcpyHostToDevice);
+			cudaMemcpy(&d_plane_array[i], &d_plane_obj, sizeof(Plane*), cudaMemcpyHostToDevice);
+    }
+
+    delete[] rc.planes;
+    rc.planes = d_plane_array;
 	}
 
 	// bvh_head
@@ -154,14 +179,16 @@ Object* deepCopyObjectToDevice(const Object* host_obj)
 			break;
 		}
 		default:
-				return nullptr;
+			return nullptr;
 	}
 
 	// 2) Create a device-side Object wrapper
 	Object h_obj(host_obj->obj_type, d_inner);
 	Object* d_obj = nullptr;
+
 	cudaMalloc(&d_obj, sizeof(Object));
 	cudaMemcpy(d_obj, &h_obj, sizeof(Object), cudaMemcpyHostToDevice);
+
 	return d_obj;
 }
 
@@ -253,6 +280,10 @@ void freeRawConfigDeviceMemory(RawConfig& rc) {
 	// free sun
 	if (rc.sun) 
 	{
+		for (int i = 0; i < rc.num_sun; i++)
+		{
+			cudaFree(rc.sun[i]);
+		}
 		cudaFree(rc.sun);
 		rc.sun = nullptr;
 	}
@@ -260,6 +291,10 @@ void freeRawConfigDeviceMemory(RawConfig& rc) {
 	// free bulbs
 	if (rc.bulbs) 
 	{
+		for (int i = 0; i < rc.num_bulbs; i++)
+		{
+			cudaFree(rc.bulbs[i]);
+		}
 		cudaFree(rc.bulbs);
 		rc.bulbs = nullptr;
 	}
@@ -267,6 +302,10 @@ void freeRawConfigDeviceMemory(RawConfig& rc) {
 	// free planes
 	if (rc.planes) 
 	{
+		for (int i = 0; i < rc.num_planes; i++)
+		{
+			cudaFree(rc.planes[i]);
+		}
 		cudaFree(rc.planes);
 		rc.planes = nullptr;
 	}
@@ -281,11 +320,20 @@ void freeRawConfigDeviceMemory(RawConfig& rc) {
 
 void freeStlConfig(StlConfig& stl) 
 {
-	for (Object* obj : stl.objects) 
+	// Free the BVH head pointer if it exists
+	if (stl.bvh_head) 
+	{
+		std::cout << "Before bvh_head free " << std::endl;
+		freeObject(stl.bvh_head); 
+		stl.bvh_head = nullptr;
+		std::cout << "After bvh_head free " << std::endl;
+	}
+
+	for (auto obj : stl.objects) 
 	{
 		if (obj) 
 		{
-			delete obj;
+			freeObject(obj);
 		}
 	}
 	stl.objects.clear();
@@ -325,11 +373,40 @@ void freeStlConfig(StlConfig& stl)
 		}
 	}
 	stl.vertices.clear();
+}
 
-	// Free the BVH head pointer if it exists
-	if (stl.bvh_head) 
+void freeObject(Object* obj) 
+{
+	if (obj->obj_ptr) 
 	{
-		delete stl.bvh_head; 
-		stl.bvh_head = nullptr;
+		switch (obj->obj_type) 
+		{
+			case ObjectType::Sphere:
+				delete static_cast<Sphere*>(obj->obj_ptr);
+				break;
+			case ObjectType::Triangle:
+				delete static_cast<Triangle*>(obj->obj_ptr);
+				break;
+			case ObjectType::BVH:
+				freeBvh(static_cast<BVH*>(obj->obj_ptr));
+				break;
+			default:
+				break;
+		}
+	}
+
+	delete obj;
+}
+
+void freeBvh(BVH* bvh) 
+{
+	if (bvh->left && bvh->left->obj_type == ObjectType::BVH)
+	{
+		freeObject(bvh->left);
+	}
+	
+	if (bvh->right && bvh->right->obj_type == ObjectType::BVH)
+	{
+		freeObject(bvh->right);
 	}
 }

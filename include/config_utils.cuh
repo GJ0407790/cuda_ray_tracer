@@ -33,4 +33,7 @@ void freeRawConfigDeviceMemory(RawConfig& rc);
 // 8) Free the host memory allocated for a stl conifg
 void freeStlConfig(StlConfig& stl);
 
+void freeObject(Object* obj);
+void freeBvh(BVH* bvh);
+
 #endif // CONFIG_UTILS_CUH
