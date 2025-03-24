@@ -46,17 +46,17 @@ public:
 	
 	__host__ __device__ RGBA operator+(const RGBA& other) const 
 	{
-		return RGBA(r+other.r, g+other.g, b+other.b, a+other.a);
+		return RGBA(r + other.r, g + other.g, b + other.b, a + other.a);
 	}
 
   __host__ __device__ friend RGBA operator*(RGB rgb, const RGBA& other)
 	{
-		return RGBA(rgb.r*other.r, rgb.g*other.g, rgb.b*other.b, other.a);
+		return RGBA(rgb.r * other.r, rgb.g * other.g, rgb.b * other.b, other.a);
 	}
 
 	__host__ __device__ RGBA mean(int aa)
 	{
-		double inv_aa = 1/aa;
+		double inv_aa = 1.0/aa;
 		return RGBA(r * inv_aa, g * inv_aa, b * inv_aa, a * inv_aa);
 	}
 };

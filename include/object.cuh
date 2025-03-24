@@ -48,7 +48,7 @@ public:
 	Materials mat; //!< Material properties.
 	
 	__device__ ObjectInfo(): distance(-1.0),i_point(point3()),normal(vec3()),mat(Materials()) {}
-  __device__ ObjectInfo(double distance,point3 i_point, vec3 normal,Materials mat)
+  __device__ ObjectInfo(double distance, point3 i_point, vec3 normal,Materials mat)
 							: isHit(true), distance(distance), i_point(i_point), 
 							  normal(normal), mat(mat) {}
 };
@@ -59,13 +59,13 @@ class RawConfig;
  * @brief Class Ray, consists of a eye and direction
  */
 class Ray{
-	public:
-		point3 eye;
-		vec3 dir;
-		int bounce;
-		__device__ Ray() : bounce(0) {}
-		__device__ Ray(double x, double y, curandState* state, RawConfig* config);
-		__device__ Ray(point3 eye,vec3 dir,int bounce): eye(eye), dir(dir.normalize()),bounce(bounce){}
+public:
+	point3 eye;
+	vec3 dir;
+	int bounce;
+	__device__ Ray() : bounce(0) {}
+	__device__ Ray(double x, double y, curandState* state, RawConfig* config);
+	__device__ Ray(point3 eye,vec3 dir,int bounce): eye(eye), dir(dir.normalize()),bounce(bounce){}
 };
 
 class AABB{
@@ -451,8 +451,8 @@ public:
 		}
 		else
 		{
-				if(leftInfo.distance < rightInfo.distance) return leftInfo;
-				else return rightInfo;
+			if(leftInfo.distance < rightInfo.distance) return leftInfo;
+			else return rightInfo;
 		}
 	}
 

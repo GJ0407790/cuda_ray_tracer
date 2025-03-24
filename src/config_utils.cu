@@ -323,10 +323,8 @@ void freeStlConfig(StlConfig& stl)
 	// Free the BVH head pointer if it exists
 	if (stl.bvh_head) 
 	{
-		std::cout << "Before bvh_head free " << std::endl;
 		freeObject(stl.bvh_head); 
 		stl.bvh_head = nullptr;
-		std::cout << "After bvh_head free " << std::endl;
 	}
 
 	for (auto obj : stl.objects) 

@@ -7,7 +7,7 @@
 
 #include <curand_kernel.h> // for device rng
 
-void render(RGBA* d_image, int img_width, int img_height, int aa, RawConfig* config);
+void render(pixel_t* d_image, int img_width, int img_height, int aa, RawConfig* config);
 
 __device__ RGBA shootPrimaryRay(double x, double y, curandState* state, RawConfig* config);
 

@@ -3,10 +3,10 @@ NVCC    = nvcc
 CXX     = g++
 
 # CUDA-specific flags for .cu files
-CUFLAGS = -O3 -std=c++17 -arch=sm_80 -rdc=true -Iinclude
+CUFLAGS = -std=c++17 -arch=sm_80 -rdc=true -Iinclude -G -g
 
 # Host C++ flags for .cpp files
-CXXFLAGS = -O3 -std=c++17 -Iinclude
+CXXFLAGS = -std=c++17 -Iinclude
 
 # Directories
 SRC_DIR  = src

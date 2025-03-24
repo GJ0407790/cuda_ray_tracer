@@ -5,7 +5,7 @@
 
 #define EPSILON 0.001
 
-__global__ void render_kernel(RGBA* d_image, int img_width, int img_height, int aa, RawConfig* config)
+__global__ void render_kernel(pixel_t* d_image, const int img_width, const int img_height, const int aa, RawConfig* config)
 {
 	const int tid = blockDim.x * blockIdx.x + threadIdx.x;
 
@@ -29,23 +29,24 @@ __global__ void render_kernel(RGBA* d_image, int img_width, int img_height, int 
 	else
 	{
 		RGBA new_rgba;
-		for(int i = 0; i < config->aa; i++) 
+		for(int i = 0; i < aa; i++) 
 		{
 			double new_w = w + randD(-0.5, 0.5, &state);
 			double new_h = h + randD(-0.5, 0.5, &state);
+
 			new_rgba = new_rgba + shootPrimaryRay(new_w, new_h, &state, config);
 		}
 
-		rgba = new_rgba.mean(config->aa);
+		rgba = new_rgba.mean(aa);
 	}
 
 	d_image[h * img_width + w].r = RGBtosRGB(rgba.r) * 255;
 	d_image[h * img_width + w].g = RGBtosRGB(rgba.g) * 255;
 	d_image[h * img_width + w].b = RGBtosRGB(rgba.b) * 255;
-	d_image[h * img_width + w].a = RGBtosRGB(rgba.a) * 255;
+	d_image[h * img_width + w].a = rgba.a * 255;
 }
 
-void render(RGBA* d_image, const int img_width, const int img_height, const int aa, RawConfig* config)
+void render(pixel_t* d_image, const int img_width, const int img_height, const int aa, RawConfig* config)
 {
 	constexpr int block_size = 128;
 	int grid_size = (img_width * img_height - 1) / block_size + 1;
@@ -103,7 +104,8 @@ __device__ ObjectInfo hitNearest(Ray& ray, RawConfig* config){
 	if(ray.bounce == 0) return ObjectInfo();
 	auto object_tuple = config->bvh_head->checkObject(ray);
 	auto plane_tuple = checkPlane(ray, false, config);
-	auto closest_object = unpackIntersection(object_tuple,plane_tuple);
+	auto closest_object = unpackIntersection(object_tuple, plane_tuple);
+	
 	return closest_object;
 }
 
@@ -138,7 +140,7 @@ __device__ RGBA diffuseLight(const ObjectInfo& obj, curandState* state, RawConfi
 
 	for(int i = 0; i < config->num_sun; i++)
 	{
-		auto& light = config->sun[i];
+		auto light = config->sun[i];
 		//Create a shadow ray, check if path blocked
 		Ray shadow_ray(obj.i_point + obj.normal*EPSILON, light->dir,1);
 		auto sunInfo = hitNearest(shadow_ray, config);
@@ -150,16 +152,17 @@ __device__ RGBA diffuseLight(const ObjectInfo& obj, curandState* state, RawConfi
 	}
 	
 	//iterate over all point lights(bulbs)
-	for(int i = 0; i < config->num_sun; i++){
-		auto& light = config->bulbs[i];
+	for(int i = 0; i < config->num_bulbs; i++){
+		auto light = config->bulbs[i];
 		//Create a shadow ray, check if path blocked
 		vec3 bulbDir = (light->point - obj.i_point);
-		Ray shadow_ray(obj.i_point + obj.normal*EPSILON,bulbDir,1);
+		Ray shadow_ray(obj.i_point + obj.normal * EPSILON, bulbDir, 1);
+
 		auto bulbInfo = hitNearest(shadow_ray, config);
 
-		if(bulbInfo.isHit)
+		if (bulbInfo.isHit)
 		{
-			if(bulbInfo.distance < bulbDir.length()) continue;
+			if (bulbInfo.distance < bulbDir.length()) continue;
 		}
 
 		double lambert = fmax(dot(normal,bulbDir.normalize()),0.0);

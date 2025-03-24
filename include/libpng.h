@@ -123,7 +123,7 @@ class Image {
     
     Image() : data(nullptr) {}
     /// destructor
-    ~Image() { if(!data) free_image(data);}
+    ~Image() { if(data) free_image(data);}
     
     /// array access to image. Use as `img[y][x].red` or the like. Note the y-first order!
     pixel_t* operator[](uint32_t y) { return &(data->rgba[data->width * y]); }

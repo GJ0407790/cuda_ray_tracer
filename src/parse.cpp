@@ -24,8 +24,6 @@ void parseInput(char* argv[], StlConfig& config)
 		exit(1);
 	}
 
-	std::cout << "Success in opening file..." << std::endl;
-
 	//read line by line
 	string line;
 	while(getline(input,line)){

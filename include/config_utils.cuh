@@ -2,6 +2,7 @@
 #define CONFIG_UTILS_CUH
 
 #include <cuda_runtime.h>
+
 #include "config.hpp" 
 
 // -------------- Host-Side Functions --------------
