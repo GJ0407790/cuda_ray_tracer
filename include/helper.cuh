@@ -22,7 +22,7 @@ public:
   __host__ __device__ BaryCenter(double b0, double b1, double b2) : b0{b0}, b1{b1}, b2{b2} {}
 };
 
-__device__ BaryCenter getBarycentric(const Triangle& tri,const point3& point);
+__device__ BaryCenter getBarycentric(const Triangle& tri, const point3& point);
 
 __device__ double randD(double start, double end, curandState* state);
 __device__ double standerdD(double stddev, curandState* state);

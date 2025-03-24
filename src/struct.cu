@@ -21,9 +21,12 @@ __device__ Ray::Ray(double x, double y, curandState* state, RawConfig* config){
 	
 	this->eye = config->eye;
 	
-	if(config->fisheye) {
+	if(config->fisheye) 
+	{
 		dir = (sx * config->right + sy * config->up) + sqrt(1-pow(sx,2)-pow(sy,2)) * config->forward;
-	} else if (config->panorama) {
+	} 
+	else if (config->panorama) 
+	{
 		//re-map the sx and sy
 		sx = (double)x / (double) config->width;
 		sy = (double)y / (double) config->height;
@@ -34,7 +37,9 @@ __device__ Ray::Ray(double x, double y, curandState* state, RawConfig* config){
 		dir = cos(phi) * (cos(theta) * config->forward + sin(theta) * config->right) - sin(phi) * config->up;
 		dir = dir.normalize();
 	//depth of field primary ray
-	}else if(config->dof_focus != 0){
+	}
+	else if(config->dof_focus != 0)
+	{
 		double theta = randD(0, 2.0 * M_PI, state);
 		double r = randD(0, config->dof_lens, state);
 		double x = r * cos(theta); 
@@ -102,19 +107,24 @@ __device__ ObjectInfo Triangle::checkObject(Ray& ray)
 	if(t <= 0) return ObjectInfo();
 
 	intersection_point = t * ray.dir + ray.eye;
-	auto barycenter = getBarycentric(*this,intersection_point);
+	auto barycenter = getBarycentric(*this, intersection_point);
 
 	double b0 = barycenter.b0;
 	double b1 = barycenter.b1;
 	double b2 = barycenter.b2;
 
-	bool inside = (fmin(fmin(b0, b1), b2) >= -EPSILON);
+	bool inside = (b0 >= -EPSILON) && (b1 >= -EPSILON) && (b2 >= -EPSILON);
 
-	if(!inside && t > 0.00000001) return ObjectInfo(); //magic number, epsilon but smaller
+	if(!inside && t > 0.00000001) //magic number, epsilon but smaller
+	{
+		printf("Triangle::checkObject fail t=%.6f b0=%.6f b1=%.6f b2=%.6f\n", t, b0, b1, b2);
+		return ObjectInfo();
+	}
 	
 	t_color = this->getColor(b0, b1, b2);
 	normal = (dot(nor, ray.dir) < 0) ? nor : -nor; //determine the direction normal points to
 	
+	printf("Triangle::checkObject success\n");
 	return ObjectInfo(t, intersection_point, normal, mat); 
 }
 

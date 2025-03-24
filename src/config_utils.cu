@@ -195,7 +195,8 @@ Object* deepCopyObjectToDevice(const Object* host_obj)
 //--------------------------------------
 // 4) copyBVHToDevice
 //--------------------------------------
-BVH* copyBVHToDevice(BVH* host_bvh) {
+BVH* copyBVHToDevice(BVH* host_bvh) 
+{
 	if (!host_bvh) return nullptr;
 
 	BVH* d_bvh = nullptr;
@@ -225,7 +226,8 @@ BVH* copyBVHToDevice(BVH* host_bvh) {
 //--------------------------------------
 // 5) freeBVHOnDevice
 //--------------------------------------
-void freeBVHOnDevice(BVH* d_bvh) {
+void freeBVHOnDevice(BVH* d_bvh) 
+{
 	if (!d_bvh) return;
 
 	// Copy to host to read left/right pointers
@@ -248,7 +250,8 @@ void freeBVHOnDevice(BVH* d_bvh) {
 //--------------------------------------
 // 6) freeDeviceObject
 //--------------------------------------
-void freeDeviceObject(Object* d_obj) {
+void freeDeviceObject(Object* d_obj) 
+{
 	if (!d_obj) return;
 
 	Object h_obj;
@@ -276,41 +279,57 @@ void freeDeviceObject(Object* d_obj) {
 //--------------------------------------
 // 7) freeRawConfigDeviceMemory
 //--------------------------------------
-void freeRawConfigDeviceMemory(RawConfig& rc) {
-	// free sun
-	if (rc.sun) 
+void freeRawConfigDeviceMemory(RawConfig& rc) 
+{
+	// Free sun
+	if (rc.sun && rc.num_sun > 0) 
 	{
-		for (int i = 0; i < rc.num_sun; i++)
+		Sun** h_sun = new Sun*[rc.num_sun];
+		cudaMemcpy(h_sun, rc.sun, rc.num_sun * sizeof(Sun*), cudaMemcpyDeviceToHost);
+		
+		for (int i = 0; i < rc.num_sun; ++i) 
 		{
-			cudaFree(rc.sun[i]);
+			cudaFree(h_sun[i]);
 		}
+
+		delete[] h_sun;
 		cudaFree(rc.sun);
 		rc.sun = nullptr;
 	}
 
-	// free bulbs
-	if (rc.bulbs) 
+	// Free bulbs
+	if (rc.bulbs && rc.num_bulbs > 0) 
 	{
-		for (int i = 0; i < rc.num_bulbs; i++)
+		Bulb** h_bulbs = new Bulb*[rc.num_bulbs];
+		cudaMemcpy(h_bulbs, rc.bulbs, rc.num_bulbs * sizeof(Bulb*), cudaMemcpyDeviceToHost);
+		
+		for (int i = 0; i < rc.num_bulbs; ++i) 
 		{
-			cudaFree(rc.bulbs[i]);
+			cudaFree(h_bulbs[i]);
 		}
+
+		delete[] h_bulbs;
 		cudaFree(rc.bulbs);
 		rc.bulbs = nullptr;
 	}
 
-	// free planes
-	if (rc.planes) 
+	// Free planes
+	if (rc.planes && rc.num_planes > 0) 
 	{
-		for (int i = 0; i < rc.num_planes; i++)
+		Plane** h_planes = new Plane*[rc.num_planes];
+		cudaMemcpy(h_planes, rc.planes, rc.num_planes * sizeof(Plane*), cudaMemcpyDeviceToHost);
+		
+		for (int i = 0; i < rc.num_planes; ++i) 
 		{
-			cudaFree(rc.planes[i]);
+			cudaFree(h_planes[i]);
 		}
+
+		delete[] h_planes;
 		cudaFree(rc.planes);
 		rc.planes = nullptr;
 	}
 
-	// free bvh_head
+	// Free BVH head — this is still tricky due to tree structure
 	if (rc.bvh_head) 
 	{
 		freeDeviceObject(rc.bvh_head);

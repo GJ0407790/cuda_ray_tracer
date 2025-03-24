@@ -31,7 +31,7 @@ public:
 	 * @param ior 
 	 * @param roughness 
 	 */
-	__host__ __device__ Materials(RGB color,RGB shininess,RGB trans,double ior,double roughness):
+	__host__ __device__ Materials(RGB color, RGB shininess, RGB trans, double ior, double roughness):
 		color(color),shininess(shininess),trans(trans),ior(ior),roughness(roughness) {}
 };
 
@@ -233,15 +233,6 @@ public:
 		auto rvec = vec3(r,r,r);
     bbox = AABB(c - rvec,c + rvec);
 	}
-	
-	/**
-	 * @brief Construct a new Sphere object, with texture inputs.
-	 */
-	Sphere(double x,double y,double z,double r,std::string text): r(r) {
-		c = point3(x,y,z);
-		auto rvec = vec3(r,r,r);
-    bbox = AABB(c - rvec,c + rvec);
-	}
 
 	__host__ __device__ void setProperties(RGB shine, RGB tran, double ior, double roughness) {
 		mat.shininess = shine;
@@ -289,10 +280,9 @@ public:
 class Vertex{
 public:
 	point3 p; //!< The point for the vertex.
-	Texcoord tex; //<! The texture coordinate, if provided.
+
 	Vertex(): p(point3()) {}
 	Vertex(double x,double y,double z): p(point3(x,y,z)) {}
-	Vertex(double x,double y,double z,Texcoord tex): p(point3(x,y,z)),tex(tex){}
 };
 
 /**
@@ -301,36 +291,31 @@ public:
 class Triangle {
 public:
 	point3 p0,p1,p2; //!< Three vertices of the triangle.
-	Texcoord tex0,tex1,tex2; //!<texture coordinates for the vertices,if provided.
 	vec3 nor;  //!< Normal of the triangle.
 	point3 e1,e2; //!< The e1,e2 coordinates, precomputed for Barycentric calculation.
 	Materials mat; //!< Material properties.
 	AABB bbox; //!< Axis-aligned bounding box for the Object class. For BVH traversal.
 
-	Triangle(): p0(point3()),p1(point3()),p2(point3()),
-				nor(vec3()),e1(point3()),e2(point3()){mat.color = {1.0f,1.0f,1.0f};}
-
-	Triangle(Vertex a,Vertex b,Vertex c,RGB rgb) {
-		p0 = a.p;p1 = b.p;p2 = c.p;
-		tex0 = a.tex;tex1 = b.tex;tex2 = c.tex;
-		mat.color = rgb;
-		nor = cross(p1-p0,p2-p0).normalize();
-		vec3 a1 = cross(p2-p0,nor);
-		vec3 a2 = cross(p1-p0,nor);
-		e1 = (1/(dot(a1,p1-p0))) * a1;
-		e2 = (1/(dot(a2,p2-p0))) * a2;
-		bbox = AABB(a.p,b.p,c.p);
+	Triangle()
+	{
+		mat.color = {1.0f,1.0f,1.0f};
 	}
 
-	Triangle(Vertex a,Vertex b,Vertex c,std::string text) {
-		p0 = a.p;p1 = b.p;p2 = c.p;
-		tex0 = a.tex;tex1 = b.tex;tex2 = c.tex;
-		nor = cross(p1-p0,p2-p0).normalize();
-		vec3 a1 = cross(p2-p0,nor);
-		vec3 a2 = cross(p1-p0,nor);
-		e1 = (1/(dot(a1,p1-p0))) * a1;
-		e2 = (1/(dot(a2,p2-p0))) * a2;
-		bbox = AABB(a.p,b.p,c.p);
+	Triangle(Vertex a, Vertex b, Vertex c, RGB rgb) 
+	{
+		p0 = a.p;
+		p1 = b.p;
+		p2 = c.p;
+
+		mat.color = rgb;
+		nor = cross(p1 - p0, p2 - p0).normalize();
+		
+		vec3 a1 = cross(p2 - p0, nor);
+		vec3 a2 = cross(p1 - p0, nor);
+		
+		e1 = (1 / (dot(a1, p1 - p0))) * a1;
+		e2 = (1 / (dot(a2, p2 - p0))) * a2;
+		bbox = AABB(a.p, b.p, c.p);
 	}
 
 	__host__ __device__ AABB getBox() const {

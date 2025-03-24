@@ -59,14 +59,33 @@ __device__ ObjectInfo unpackIntersection(const ObjectInfo& obj, const ObjectInfo
 	}
 }
 
-__device__ BaryCenter getBarycentric(const Triangle& tri,const point3& point){
-	double b0,b1,b2;
+__device__ BaryCenter getBarycentric(const Triangle& tri, const point3& p){
+	// double b0,b1,b2;
 	
-	b1 = dot(tri.e1,point - tri.p0);
-	b2 = dot(tri.e2,point - tri.p0);
-	b0 = 1 - b1 - b2;
+	// b1 = dot(tri.e1, point - tri.p0);
+	// b2 = dot(tri.e2, point - tri.p0);
+	// b0 = 1.0 - b1 - b2;
 	
-	return BaryCenter(b0,b1,b2); 
+	// return BaryCenter(b0, b1, b2); 
+
+	vec3 v0 = tri.p1 - tri.p0;
+	vec3 v1 = tri.p2 - tri.p0;
+	vec3 v2 = p - tri.p0;
+
+	double d00 = dot(v0, v0);
+	double d01 = dot(v0, v1);
+	double d11 = dot(v1, v1);
+	double d20 = dot(v2, v0);
+	double d21 = dot(v2, v1);
+
+	double denom = d00 * d11 - d01 * d01;
+	if (fabs(denom) < 1e-8) return BaryCenter(-1, -1, -1);  // degenerate triangle
+
+	double v = (d11 * d20 - d01 * d21) / denom;
+	double w = (d00 * d21 - d01 * d20) / denom;
+	double u = 1.0 - v - w;
+
+	return BaryCenter(u, v, w);
 }
 
 __device__ double randD(double start, double end, curandState* state) {
