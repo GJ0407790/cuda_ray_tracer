@@ -3,11 +3,11 @@
 #SBATCH --output="render.out"
 #SBATCH --error="render.err"
 #SBATCH --partition=gpuA40x4
-#SBATCH --mem=12G
+#SBATCH --mem=5G
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
-#SBATCH --constraint=""
+#SBATCH --constraint="perf,nvperf"
 #SBATCH --gpus-per-node=1
 #SBATCH --gpu-bind=closest
 #SBATCH --account=bche-delta-gpu
@@ -23,4 +23,4 @@ INPUT_SCENE="redchair.txt"
 
 # Run the raytracer.
 # srun compute-sanitizer ./raytracer "$INPUT_SCENE"
-srun ./raytracer "$INPUT_SCENE"
+srun nsys profile --stats=true ./raytracer "$INPUT_SCENE" > double.out

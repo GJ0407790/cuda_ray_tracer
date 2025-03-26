@@ -71,28 +71,34 @@ __device__ RGB Triangle::getColor(double b0, double b1, double b2)
 	return mat.color;
 }
 
-__device__ ObjectInfo Sphere::checkObject(Ray& ray){
+__device__ ObjectInfo Sphere::checkObject(Ray& ray)
+{
 	vec3 nor;
 	RGB s_color;
 	vec3 cr0 = (c - ray.eye);
 	bool inside = (cr0.dot(cr0) < r * r);
 	double tc = cr0.dot(ray.dir) / ray.dir.length();
+	
 	if(!inside && tc < 0) return ObjectInfo();
 
 	vec3 d = ray.eye + (tc * ray.dir) - c;
-	double d2 = pow(d.length(),2);
+	double d2 = pow(d.length(), 2);
 
-	if(!inside && pow(r,2) < d2) return ObjectInfo();
+	if(!inside && pow(r, 2) < d2) return ObjectInfo();
 
 	//difference between t and tc
 	//the two intersecting points are generated
-	double t_offset = sqrt(pow(r,2) - d2) / ray.dir.length();
+	double t_offset = sqrt(pow(r, 2) - d2) / ray.dir.length();
 	double t;
+
 	if(inside) t = tc + t_offset;
 	else t = tc - t_offset;
+	
 	point3 p = t * ray.dir + ray.eye;
 	s_color = this->getColor(p);
+	
 	nor = (inside) ? 1/r * (c - p) : 1/r * (p - c);
+	
 	return ObjectInfo(t,p,nor,mat); 
 }
 
@@ -117,14 +123,12 @@ __device__ ObjectInfo Triangle::checkObject(Ray& ray)
 
 	if(!inside && t > 0.00000001) //magic number, epsilon but smaller
 	{
-		printf("Triangle::checkObject fail t=%.6f b0=%.6f b1=%.6f b2=%.6f\n", t, b0, b1, b2);
 		return ObjectInfo();
 	}
 	
 	t_color = this->getColor(b0, b1, b2);
 	normal = (dot(nor, ray.dir) < 0) ? nor : -nor; //determine the direction normal points to
 	
-	printf("Triangle::checkObject success\n");
 	return ObjectInfo(t, intersection_point, normal, mat); 
 }
 

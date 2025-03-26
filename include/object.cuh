@@ -68,7 +68,7 @@ public:
 	__device__ Ray(point3 eye,vec3 dir,int bounce): eye(eye), dir(dir.normalize()),bounce(bounce){}
 };
 
-class AABB{
+class AABB {
 public:
 	Interval x,y,z;
 
@@ -95,9 +95,9 @@ public:
 		float z_max = fmax(fmax(a.z, b.z), c.z);
 
 		// Create intervals
-		Interval x(x_min, x_max);
-		Interval y(y_min, y_max);
-		Interval z(z_min, z_max);
+		x = Interval(x_min, x_max);
+		y = Interval(y_min, y_max);
+		z = Interval(z_min, z_max);
 		
 		//expand if the interval is too small
 		if(x.size() < 0.01) x = x.expand(0.01);
@@ -133,13 +133,17 @@ public:
 		const point3& ray_eye = r.eye;
     const vec3&   ray_dir = r.dir;
 
-    double t_min = -INFINITY;
-    double t_max =  INFINITY;
+    double t_min = double(-INFINITY);
+    double t_max = double(INFINITY);
 
-    for (int axis = 0; axis < 3; axis++) {
+    for (int axis = 0; axis < 3; axis++) 
+		{
 			const Interval& ax = getAxis(axis);
 			
-			if (ax.min > ax.max) return false;
+			if (ax.min > ax.max) 
+			{
+				return false;
+			}
 
 			const double adinv = 1.0 / ray_dir[axis];
 
@@ -153,10 +157,20 @@ public:
 				t1 = temp;
 			}
 
-			t_min = fmax(t_min, t0);
-			t_max = fmin(t_max, t1);
+			if (t0 > t_min)
+			{
+				t_min = t0;
+			}
 
-			if (t_max <= t_min) return false;
+			if (t1 < t_max)
+			{
+				t_max = t1;
+			}
+
+			if (t_max <= t_min) 
+			{
+				return false;
+			}
     }
 
     return true;
@@ -227,21 +241,24 @@ public:
 	/**
 	 * @brief Construct a new Sphere object, with color inputs.
 	 */
-	Sphere(double x,double y,double z,double r,RGB rgb): r(r) {
-		c = point3(x,y,z);
+	Sphere(double x, double y, double z, double r, RGB rgb): r(r) 
+	{
+		c = point3(x, y, z);
 		mat.color = rgb;
-		auto rvec = vec3(r,r,r);
-    bbox = AABB(c - rvec,c + rvec);
+		auto rvec = vec3(r, r, r);
+    bbox = AABB(c - rvec, c + rvec);
 	}
 
-	__host__ __device__ void setProperties(RGB shine, RGB tran, double ior, double roughness) {
+	__host__ __device__ void setProperties(RGB shine, RGB tran, double ior, double roughness) 
+	{
 		mat.shininess = shine;
 		mat.trans = tran;
 		mat.ior = ior;
 		mat.roughness = roughness;
 	}
 
-	__host__ __device__ AABB getBox() const {
+	__host__ __device__ AABB getBox() const 
+	{
 		return bbox;
 	}
 
@@ -315,6 +332,7 @@ public:
 		
 		e1 = (1 / (dot(a1, p1 - p0))) * a1;
 		e2 = (1 / (dot(a2, p2 - p0))) * a2;
+
 		bbox = AABB(a.p, b.p, c.p);
 	}
 
@@ -416,21 +434,28 @@ public:
   __device__ ObjectInfo checkObject(Ray& ray) 
 	{
 		//hit nothing, return nothing
-		if (!bbox.hit(ray))
-				return ObjectInfo();
+		bool is_hit = bbox.hit(ray);
+
+		if (!is_hit) 
+		{
+			return ObjectInfo();
+		}
 
 		ObjectInfo leftInfo = left->checkObject(ray);
 		ObjectInfo rightInfo = right->checkObject(ray);
 
-		if(leftInfo.isHit && !rightInfo.isHit) 
+		bool is_left_hit = leftInfo.isHit;
+		bool is_right_hit = rightInfo.isHit;
+
+		if(is_left_hit && !is_right_hit) 
 		{
 			return leftInfo;
 		}
-		else if(!leftInfo.isHit && rightInfo.isHit) 
+		else if(!is_left_hit && is_right_hit) 
 		{
 			return rightInfo;
 		}
-		else if(!leftInfo.isHit && !rightInfo.isHit)
+		else if(!is_left_hit && !is_right_hit)
 		{
 			return ObjectInfo();
 		}
