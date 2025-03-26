@@ -3,7 +3,7 @@
 
 #include <math.h>
 
-#define EPSILON 0.001
+#define EPSILON 0.001f
 
 __global__ void render_kernel(pixel_t* d_image, const int img_width, const int img_height, const int aa, RawConfig* config)
 {
@@ -24,15 +24,15 @@ __global__ void render_kernel(pixel_t* d_image, const int img_width, const int i
 	RGBA rgba;
 	if (aa == 0)
 	{
-		rgba = shootPrimaryRay((double)w, (double)h, &state, config);
+		rgba = shootPrimaryRay((float)w, (float)h, &state, config);
 	}
 	else
 	{
 		RGBA new_rgba;
 		for(int i = 0; i < aa; i++) 
 		{
-			double new_w = w + randD(-0.5, 0.5, &state);
-			double new_h = h + randD(-0.5, 0.5, &state);
+			float new_w = w + randD(-0.5f, 0.5f, &state);
+			float new_h = h + randD(-0.5f, 0.5f, &state);
 
 			new_rgba = new_rgba + shootPrimaryRay(new_w, new_h, &state, config);
 		}
@@ -65,14 +65,15 @@ void render(pixel_t* d_image, const int img_width, const int img_height, const i
  * 			refract and global illumination color. The latter three could create
  * 			more rays that will bounce in the scene.
  */
-__device__ RGBA shootPrimaryRay(double x, double y, curandState* state, RawConfig* config){
+__device__ RGBA shootPrimaryRay(float x, float y, curandState* state, RawConfig* config){
 	//create a ray
 	Ray ray(x, y, state, config);
 	
 	//loop over all objects in the scene
 	ObjectInfo obj = hitNearest(ray, config);
 
-	RGBA color,diffuse,reflect,refract,gi_color;
+	RGBA color, diffuse, reflect, refract, gi_color;
+
 	if(obj.isHit)
 	{ //hit
 		diffuse = diffuseLight(obj, state, config);
@@ -82,14 +83,10 @@ __device__ RGBA shootPrimaryRay(double x, double y, curandState* state, RawConfi
 
 		//mix the colors
 		color = obj.mat.shininess * reflect + 
-				(RGB(1,1,1) - obj.mat.shininess) * obj.mat.trans * refract + 
-				(RGB(1,1,1) - obj.mat.shininess) * 
-				(RGB(1,1,1) - obj.mat.trans) * (diffuse + gi_color);
-		color.a = 1.0;
-	} 
-	else 
-	{
-		hitMiss(); //hitMiss() does nothing
+						(RGB(1.0f, 1.0f, 1.0f) - obj.mat.shininess) * obj.mat.trans * refract + 
+						(RGB(1.0f, 1.0f, 1.0f) - obj.mat.shininess) * 
+						(RGB(1.0f, 1.0f, 1.0f) - obj.mat.trans) * (diffuse + gi_color);
+		color.a = 1.0f;
 	} 
 
 	return color;
@@ -100,21 +97,15 @@ __device__ RGBA shootPrimaryRay(double x, double y, curandState* state, RawConfi
  * @param ray The ray to trace.
  * @return ObjectInfo All the related info for the object, if any is hit.
  */
-__device__ ObjectInfo hitNearest(Ray& ray, RawConfig* config){
+__device__ ObjectInfo hitNearest(Ray& ray, RawConfig* config)
+{
 	if(ray.bounce == 0) return ObjectInfo();
+
 	auto object_tuple = config->bvh_head->checkObject(ray);
 	auto plane_tuple = checkPlane(ray, false, config);
 	auto closest_object = unpackIntersection(object_tuple, plane_tuple);
 	
 	return closest_object;
-}
-
-/**
- * @brief Does nothing.
- * @return ObjectInfo A default no-hit objectInfo.
- */
-__device__ ObjectInfo hitMiss(){
-	return ObjectInfo();
 }
 
 /**
@@ -129,7 +120,8 @@ __device__ ObjectInfo hitMiss(){
 __device__ RGBA diffuseLight(const ObjectInfo& obj, curandState* state, RawConfig* config){
 	RGBA color;
 	vec3 normal = obj.normal;
-	if(obj.mat.roughness > 0)
+	
+	if(obj.mat.roughness > 0.0f)
 	{
 		normal = normal + vec3(standerdD(obj.mat.roughness, state),
 													 standerdD(obj.mat.roughness, state),
@@ -147,7 +139,7 @@ __device__ RGBA diffuseLight(const ObjectInfo& obj, curandState* state, RawConfi
 
 		if(sunInfo.isHit) continue;
 		
-		double lambert = fmax(dot(normal, light->dir.normalize()), 0.0);
+		float lambert = fmax(dot(normal, light->dir.normalize()), 0.0f);
 		color = color + getColorSun(lambert, obj.mat.color, light->color, config);
 	}
 	
@@ -165,7 +157,7 @@ __device__ RGBA diffuseLight(const ObjectInfo& obj, curandState* state, RawConfi
 			if (bulbInfo.distance < bulbDir.length()) continue;
 		}
 
-		double lambert = fmax(dot(normal,bulbDir.normalize()),0.0);
+		float lambert = fmax(dot(normal,bulbDir.normalize()), 0.0f);
 		color = color + getColorBulb(lambert, obj.mat.color, light->color,bulbDir.length(), config);
 	}
 
@@ -183,10 +175,10 @@ __device__ RGBA diffuseLight(const ObjectInfo& obj, curandState* state, RawConfi
  * 			calculation is performed to achieve the reflection lighting effect.
  */
 __device__ RGBA reflectionLight(const Ray& ray,const ObjectInfo& obj, curandState* state, RawConfig* config){
-	if(obj.mat.shininess == RGB(0.0,0.0,0.0) || ray.bounce <= 0) return RGBA();
+	if(obj.mat.shininess == RGB(0.0f, 0.0f, 0.0f) || ray.bounce <= 0) return RGBA();
 
 	vec3 normal = obj.normal;
-	if(obj.mat.roughness > 0)
+	if(obj.mat.roughness > 0.0f)
 	{
 		normal = normal + vec3(standerdD(obj.mat.roughness, state),
 													 standerdD(obj.mat.roughness, state),
@@ -194,31 +186,40 @@ __device__ RGBA reflectionLight(const Ray& ray,const ObjectInfo& obj, curandStat
 	}
 
 	normal = normal.normalize();
-	vec3 reflect_dir = ray.dir - 2*(dot(normal,ray.dir))*normal;
-	Ray second_ray(obj.i_point + obj.normal*EPSILON,reflect_dir,ray.bounce - 1);
+	vec3 reflect_dir = ray.dir - 2.0f * (dot(normal,ray.dir)) * normal;
+	Ray second_ray(obj.i_point + obj.normal * EPSILON, reflect_dir, ray.bounce - 1);
 
 	ObjectInfo second_obj = hitNearest(second_ray, config);
 
 	RGB shine,trans;
-	if(ray.bounce == 1){
-		shine = RGB(0.0,0.0,0.0);
-		trans = RGB(0.0,0.0,0.0);
-	}else{
+	if(ray.bounce == 1)
+	{
+		shine = RGB(0.0f, 0.0f, 0.0f);
+		trans = RGB(0.0f, 0.0f, 0.0f);
+	}
+	else
+	{
 		shine = second_obj.mat.shininess;
 		trans = second_obj.mat.trans;
 	}
 
-	RGBA color,diffuse,reflect,refract;
-	if(second_obj.isHit){ //hit
+	RGBA color, diffuse, reflect, refract;
+
+	if(second_obj.isHit)
+	{ //hit
 		diffuse = diffuseLight(second_obj, state, config);
 		reflect = reflectionLight(second_ray,second_obj, state, config);
 		refract = refractionLight(ray, obj, state, config);
-		//refract = RGBA(0,0,0,1);
-		//mix the colors
+
 		color = shine * reflect + 
-				(RGB(1,1,1) - shine) * trans * refract + 
-				(RGB(1,1,1) - shine) * (RGB(1,1,1) - trans) * diffuse;
-	}else color = RGBA(0,0,0,1);
+						(RGB(1.0f, 1.0f, 1.0f) - shine) * trans * refract + 
+						(RGB(1.0f, 1.0f, 1.0f) - shine) * (RGB(1.0f, 1.0f, 1.0f) - trans) * diffuse;
+					
+	}
+	else
+	{
+		 color = RGBA(0.0f, 0.0f, 0.0f, 1.0f);
+	}
 
 	return color;
 }
@@ -241,27 +242,30 @@ __device__ RGBA reflectionLight(const Ray& ray,const ObjectInfo& obj, curandStat
  * 	 	 the ray is inside the object.
  */
 __device__ RGBA refractionLight(const Ray& ray, const ObjectInfo& obj, curandState* state, RawConfig* config){
-	if(obj.mat.trans == RGB(0.0,0.0,0.0) || ray.bounce <= 0) return RGBA();
+	if(obj.mat.trans == RGB(0.0f, 0.0f, 0.0f) || ray.bounce <= 0) return RGBA();
 	
 	vec3 refract_dir;
 	Ray inside_ray,final_ray;
-	double ior = 1 / obj.mat.ior;
+
+	float ior = 1.0f / obj.mat.ior;
 	vec3 dir = ray.dir;
 	vec3 normal = obj.normal.normalize();
 	point3 i_point = obj.i_point;
 	int bounce = ray.bounce;
-	double k = 1.0 - pow(ior,2) * (1.0 - pow(dot(normal,dir),2));
+
+	float k = 1.0f - pow(ior, 2) * (1.0f - pow(dot(normal,dir),2));
 	
 	if(k < 0)
 	{ //total internal refraction
 		//use the reflection method instead
-		refract_dir = dir - 2*(dot(normal,dir))*normal;
-		final_ray = Ray(i_point + normal*EPSILON,refract_dir,--bounce);
+		refract_dir = dir - 2.0f * (dot(normal,dir)) * normal;
+		final_ray = Ray(i_point + normal * EPSILON, refract_dir, --bounce);
 	}
 	else
 	{ //refraction inside the object
 		refract_dir = ior * dir - (ior * (dot(normal,dir)) + sqrt(k)) * normal;
-		inside_ray = Ray(i_point - normal*1e-4,refract_dir,bounce);
+		inside_ray = Ray(i_point - normal* 0.0001f, refract_dir, bounce);
+
 		//The object that the light goes out,usually the same sphere
 		ObjectInfo other_obj = hitNearest(inside_ray, config);
 		
@@ -270,9 +274,10 @@ __device__ RGBA refractionLight(const Ray& ray, const ObjectInfo& obj, curandSta
 		dir = inside_ray.dir;
 		i_point = other_obj.i_point;
 
-		k = 1.0 - ior * ior * (1.0 - pow(dot(normal,dir),2));
+		k = 1.0f - ior * ior * (1.0f - pow(dot(normal,dir), 2));
+
 		refract_dir = ior * dir - (ior * (dot(normal,dir)) + sqrt(k)) * normal;
-		final_ray = Ray(i_point - normal*1e-4,refract_dir,--bounce);
+		final_ray = Ray(i_point - normal * 0.0001f, refract_dir, --bounce);
 	}
 
 	ObjectInfo final_obj = hitNearest(final_ray, config);
@@ -280,8 +285,8 @@ __device__ RGBA refractionLight(const Ray& ray, const ObjectInfo& obj, curandSta
 	
 	if(bounce == 0)
 	{
-		shine = RGB(0.0,0.0,0.0);
-		trans = RGB(0.0,0.0,0.0);
+		shine = RGB(0.0f, 0.0f, 0.0f);
+		trans = RGB(0.0f, 0.0f, 0.0f);
 	}
 	else
 	{
@@ -298,10 +303,13 @@ __device__ RGBA refractionLight(const Ray& ray, const ObjectInfo& obj, curandSta
 		refract = refractionLight(final_ray,final_obj, state, config);
 		//mix the colors
 		color = shine * reflect + 
-				(RGB(1,1,1) - shine) * trans * refract + 
-				(RGB(1,1,1) - shine) * (RGB(1,1,1) - trans) * diffuse;
+						(RGB(1.0f, 1.0f, 1.0f) - shine) * trans * refract + 
+						(RGB(1.0f, 1.0f, 1.0f) - shine) * (RGB(1.0f, 1.0f, 1.0f) - trans) * diffuse;
 	}
-	else color = RGBA(0,0,0,1);
+	else 
+	{
+		color = RGBA(0.0f, 0.0f, 0.0f, 1.0f);
+	}
 
 	return color;
 }
@@ -325,7 +333,7 @@ __device__ RGBA globalIllumination(const ObjectInfo& obj, int gi_bounce, curandS
 	//sample a point on the unit sphere, with the center being the intersection point
 	vec3 gi_dir = (normal + spherePoint(state)).normalize();
 	
-	Ray gi_ray(i_point + normal * EPSILON,gi_dir,gi_bounce-1);
+	Ray gi_ray(i_point + normal * EPSILON, gi_dir, gi_bounce-1);
 	ObjectInfo gi_obj = hitNearest(gi_ray, config);
 	
 	RGBA color,diffuse,reflect,refract,gi_color;
@@ -339,11 +347,10 @@ __device__ RGBA globalIllumination(const ObjectInfo& obj, int gi_bounce, curandS
 		
 		//mix the colors
 		color = gi_obj.mat.shininess * reflect + 
-				(RGB(1,1,1) - gi_obj.mat.shininess) * gi_obj.mat.trans * refract + 
-				(RGB(1,1,1) - gi_obj.mat.shininess) * (RGB(1,1,1) - gi_obj.mat.trans)*(diffuse + gi_color);
-		color.a = 1.0;
+						(RGB(1.0f, 1.0f, 1.0f) - gi_obj.mat.shininess) * gi_obj.mat.trans * refract + 
+						(RGB(1.0f, 1.0f, 1.0f) - gi_obj.mat.shininess) * (RGB(1.0f, 1.0f, 1.0f) - gi_obj.mat.trans)*(diffuse + gi_color);
+		color.a = 1.0f;
 	}
-	else hitMiss(); //hitMiss() does nothing
 	
 	return color;
 }
@@ -360,25 +367,38 @@ __device__ RGBA globalIllumination(const ObjectInfo& obj, int gi_bounce, curandS
  *
  */
 __device__ ObjectInfo checkPlane(Ray& ray, bool exit_early, RawConfig* config){
-	double t_sol = INT_MAX;
+	float t_sol = float(INFINITY);
 	point3 p_sol;
 	vec3 nor;
 	Materials mats;
 
-	for(int i = 0; i < config->num_planes; i++){
+	for(int i = 0; i < config->num_planes; i++)
+	{
 		Plane* plane = config->planes[i];
 
-		double t = dot((plane->point - ray.eye), plane->nor) / (dot(ray.dir, plane->nor));
-		if(t <= 0) continue;
+		float t = dot((plane->point - ray.eye), plane->nor) / (dot(ray.dir, plane->nor));
+		
+		if(t <= 0.0f)
+		{
+			 continue;
+		}
+		
 		point3 intersection_point = t * ray.dir + ray.eye;
-		if(t < t_sol && t > EPSILON){
+		
+		if(t < t_sol && t > EPSILON)
+		{
 			t_sol = t;
 			p_sol = intersection_point;
-			nor = (dot(plane->nor, ray.dir) < 0) ? plane->nor : -plane->nor;
+			nor = (dot(plane->nor, ray.dir) < 0.0f) ? plane->nor : -plane->nor;
 			mats = plane->mat;
 		}
 	}
-	if(t_sol >= INT_MAX - 10) return ObjectInfo(); 
+
+	if(t_sol >= INT_MAX - 10)
+	{
+		return ObjectInfo();
+	}
+
 	return ObjectInfo(t_sol,p_sol,nor,mats); 
 }
 
@@ -392,14 +412,15 @@ __device__ ObjectInfo checkPlane(Ray& ray, bool exit_early, RawConfig* config){
  * 			and get the correct color by blending the colors of the light
  * 			and the object. Also takes care of exposure.
  */
-__device__ RGBA getColorSun(double lambert, RGB objColor, RGB lightColor, RawConfig* config)
+__device__ RGBA getColorSun(float lambert, RGB objColor, RGB lightColor, RawConfig* config)
 {
-	double r,g,b;
+	float r,g,b;
+
 	r = objColor.r * (lightColor.r * lambert);
 	g = objColor.g * (lightColor.g * lambert);
 	b = objColor.b * (lightColor.b * lambert);
 
-	return RGBA(setExpose(r, config), setExpose(g, config), setExpose(b, config), 0.0);
+	return RGBA(setExpose(r, config), setExpose(g, config), setExpose(b, config), 0.0f);
 }
 
 /**
@@ -413,14 +434,14 @@ __device__ RGBA getColorSun(double lambert, RGB objColor, RGB lightColor, RawCon
  * 			and the object, and applys light intensity falloff.
  * 			Also takes care of exposure.`
  */
-__device__ RGBA getColorBulb(double lambert, RGB objColor, RGB lightColor, double t, RawConfig* config)
+__device__ RGBA getColorBulb(float lambert, RGB objColor, RGB lightColor, float t, RawConfig* config)
 {
-	double r,g,b;
-	double i = 1.0f / pow(t,2);
+	float r,g,b;
+	float i = 1.0f / pow(t, 2);
 
 	r = objColor.r * (lightColor.r * lambert);
 	g = objColor.g * (lightColor.g * lambert);
 	b = objColor.b * (lightColor.b * lambert);
 
-	return RGBA(setExpose(r, config) * i, setExpose(g, config) * i, setExpose(b, config) * i, 0.0);
+	return RGBA(setExpose(r, config) * i, setExpose(g, config) * i, setExpose(b, config) * i, 0.0f);
 }

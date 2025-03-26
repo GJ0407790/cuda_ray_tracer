@@ -17,8 +17,8 @@ public:
 	RGB color; //!< The color, in RGB format, of the material
 	RGB shininess; //!< The shininess of the object, which is related to reflection. 
 	RGB trans; 	//! < The transparency of the object, which is related to refraction. 
-	double ior = 1.458; //!< Index of refraction. Default to 1.458.
-	double roughness = 0; //!< Roughness of the object, Default to zero(none).
+	float ior = 1.458f; //!< Index of refraction. Default to 1.458.
+	float roughness = 0.0f; //!< Roughness of the object, Default to zero(none).
 	/**
 	 * @brief Construct a new Materials object, with every member as default.
 	 */
@@ -31,7 +31,7 @@ public:
 	 * @param ior 
 	 * @param roughness 
 	 */
-	__host__ __device__ Materials(RGB color, RGB shininess, RGB trans, double ior, double roughness):
+	__host__ __device__ Materials(RGB color, RGB shininess, RGB trans, float ior, float roughness):
 		color(color),shininess(shininess),trans(trans),ior(ior),roughness(roughness) {}
 };
 
@@ -42,13 +42,13 @@ public:
 class ObjectInfo{
 public:
 	bool isHit = false; //!< Signals if there was a hit. Defaults to false.
-	double distance; //!< The distance from the ray origin to the object.
+	float distance; //!< The distance from the ray origin to the object.
 	point3 i_point;  //!< The intersection point.
 	vec3 normal; //!< The normal at the point of intersection.
 	Materials mat; //!< Material properties.
 	
-	__device__ ObjectInfo(): distance(-1.0),i_point(point3()),normal(vec3()),mat(Materials()) {}
-  __device__ ObjectInfo(double distance, point3 i_point, vec3 normal,Materials mat)
+	__device__ ObjectInfo(): distance(-1.0f),i_point(point3()),normal(vec3()),mat(Materials()) {}
+  __device__ ObjectInfo(float distance, point3 i_point, vec3 normal,Materials mat)
 							: isHit(true), distance(distance), i_point(i_point), 
 							  normal(normal), mat(mat) {}
 };
@@ -63,8 +63,9 @@ public:
 	point3 eye;
 	vec3 dir;
 	int bounce;
+
 	__device__ Ray() : bounce(0) {}
-	__device__ Ray(double x, double y, curandState* state, RawConfig* config);
+	__device__ Ray(float x, float y, curandState* state, RawConfig* config);
 	__device__ Ray(point3 eye,vec3 dir,int bounce): eye(eye), dir(dir.normalize()),bounce(bounce){}
 };
 
@@ -100,9 +101,9 @@ public:
 		z = Interval(z_min, z_max);
 		
 		//expand if the interval is too small
-		if(x.size() < 0.01) x = x.expand(0.01);
-		if(y.size() < 0.01) y = y.expand(0.01);
-		if(z.size() < 0.01) z = z.expand(0.01);
+		if(x.size() < 0.01f) x = x.expand(0.01f);
+		if(y.size() < 0.01f) y = y.expand(0.01f);
+		if(z.size() < 0.01f) z = z.expand(0.01f);
 	}
 
 	__host__ __device__ AABB(const AABB& a, const AABB& b) 
@@ -133,8 +134,8 @@ public:
 		const point3& ray_eye = r.eye;
     const vec3&   ray_dir = r.dir;
 
-    double t_min = double(-INFINITY);
-    double t_max = double(INFINITY);
+    float t_min = float(-INFINITY);
+    float t_max = float(INFINITY);
 
     for (int axis = 0; axis < 3; axis++) 
 		{
@@ -145,14 +146,14 @@ public:
 				return false;
 			}
 
-			const double adinv = 1.0 / ray_dir[axis];
+			const float adinv = 1.0f / ray_dir[axis];
 
-			double t0 = (ax.min - ray_eye[axis]) * adinv;
-			double t1 = (ax.max - ray_eye[axis]) * adinv;
+			float t0 = (ax.min - ray_eye[axis]) * adinv;
+			float t1 = (ax.max - ray_eye[axis]) * adinv;
 
 			// Manual swap
 			if (t0 > t1) {
-				double temp = t0;
+				float temp = t0;
 				t0 = t1;
 				t1 = temp;
 			}
@@ -201,7 +202,7 @@ public:
 	~Object() {};
 
 	__host__ __device__ AABB getBox() const;
-	__host__ __device__ void setProperties(RGB shine, RGB tran, double ior, double roughness);
+	__host__ __device__ void setProperties(RGB shine, RGB tran, float ior, float roughness);
 	__device__ ObjectInfo checkObject(Ray& ray);
 
 public:
@@ -218,30 +219,31 @@ class Sphere {
 public:
 	struct UV 
 	{
-		double u;
-		double v;
+		float u;
+		float v;
 
-		__device__ UV(double u_val, double v_val)
+		__device__ UV(float u_val, float v_val)
 								: u(u_val), v(v_val) {}
 	};
 
 public:
 	point3 c; //!< Center point of the sphere.
-	double r; //!< Radius of the sphere.
+	float r; //!< Radius of the sphere.
 	Materials mat; //!< Material properties.
 	AABB bbox; //!< Axis-aligned bounding box for the Object class. For BVH traversal.
 
 	/**
 	 * @brief Construct a new Sphere object with no inputs
 	 */
-	Sphere(): r(0.0) {
-		c = point3(0.0,0.0,0.0);
-		mat.color = {1.0f,1.0f,1.0f};
+	Sphere(): r(0.0f) {
+		c = point3(0.0f, 0.0f, 0.0f);
+		mat.color = {1.0f, 1.0f, 1.0f};
 	}
+
 	/**
 	 * @brief Construct a new Sphere object, with color inputs.
 	 */
-	Sphere(double x, double y, double z, double r, RGB rgb): r(r) 
+	Sphere(float x, float y, float z, float r, RGB rgb): r(r) 
 	{
 		c = point3(x, y, z);
 		mat.color = rgb;
@@ -249,7 +251,7 @@ public:
     bbox = AABB(c - rvec, c + rvec);
 	}
 
-	__host__ __device__ void setProperties(RGB shine, RGB tran, double ior, double roughness) 
+	__host__ __device__ void setProperties(RGB shine, RGB tran, float ior, float roughness) 
 	{
 		mat.shininess = shine;
 		mat.trans = tran;
@@ -272,18 +274,24 @@ public:
  */
 class Plane{
 public:
-	double a,b,c,d; //!< a,b,c,d in ax + by + cz + d = 0.
+	float a,b,c,d; //!< a,b,c,d in ax + by + cz + d = 0.
 	vec3 nor;	//!< Normal of the plane.
 	point3 point; //!< A point on the plane, for calculation purposes.
 	Materials mat; //!< Material properties.
 
-	Plane(): a(0.0),b(0.0),c(0.0),d(0.0),nor(vec3()),point(point3()) {mat.color = {1.0f,1.0f,1.0f};}
-	Plane(double a,double b,double c,double d,RGB rgb): a(a),b(b),c(c),d(d) {
+	Plane(): a(0.0f), b(0.0f), c(0.0f), d(0.0f), nor(vec3()), point(point3()) 
+	{
+		mat.color = {1.0f,1.0f,1.0f};
+	}
+
+	Plane(float a, float b, float c, float d, RGB rgb): a(a),b(b),c(c),d(d) 
+	{
 		nor = vec3(a,b,c).normalize();
-		point = (-d * vec3(a,b,c)) / (pow(a,2) + pow(b,2) + pow(c,2));
+		point = (-d * vec3(a, b, c)) / (pow(a, 2) + pow(b, 2) + pow(c, 2));
 		mat.color = rgb;
 	}
-	__host__ __device__ void setProperties(RGB shine,RGB tran,double ior,double roughness){
+	__host__ __device__ void setProperties(RGB shine,RGB tran,float ior,float roughness)
+	{
 		mat.shininess = shine;
 		mat.trans = tran;
 		mat.ior = ior;
@@ -299,7 +307,7 @@ public:
 	point3 p; //!< The point for the vertex.
 
 	Vertex(): p(point3()) {}
-	Vertex(double x,double y,double z): p(point3(x,y,z)) {}
+	Vertex(float x,float y,float z): p(point3(x,y,z)) {}
 };
 
 /**
@@ -315,7 +323,7 @@ public:
 
 	Triangle()
 	{
-		mat.color = {1.0f,1.0f,1.0f};
+		mat.color = {1.0f, 1.0f, 1.0f};
 	}
 
 	Triangle(Vertex a, Vertex b, Vertex c, RGB rgb) 
@@ -340,7 +348,7 @@ public:
 		return bbox;
 	}
 
-	__host__ __device__ void setProperties(RGB shine,RGB tran,double ior,double roughness) {
+	__host__ __device__ void setProperties(RGB shine,RGB tran,float ior,float roughness) {
 		mat.shininess = shine;
 		mat.trans = tran;
 		mat.ior = ior;
@@ -348,19 +356,22 @@ public:
 	}
 
 	__device__ ObjectInfo checkObject(Ray& ray);
-	__device__ RGB getColor(double b0,double b1,double b2);
+	__device__ RGB getColor(float b0,float b1,float b2);
 };
 
 class Sun{
 public:
 	vec3 dir;
 	RGB color;
-	Sun() {
-		dir = vec3(0.0,0.0,0.0);
-		color = {1.0f,1.0f,1.0f};
+
+	Sun() 
+	{
+		dir = vec3(0.0f, 0.0f, 0.0f);
+		color = {1.0f, 1.0f, 1.0f};
 	}
 	
-	Sun(double x,double y,double z,RGB rgb) {
+	Sun(float x,float y,float z,RGB rgb) 
+	{
 		dir = vec3(x,y,z);
 		color = rgb;
 	}
@@ -371,12 +382,14 @@ public:
 	point3 point;
 	RGB color;
 	
-	Bulb() {
-		point = point3(0.0,0.0,0.0);
-		color = {1.0f,1.0f,1.0f};
+	Bulb() 
+	{
+		point = point3(0.0f, 0.0f, 0.0f);
+		color = {1.0f, 1.0f, 1.0f};
 	}
 	
-	Bulb(double x,double y,double z,RGB rgb) {
+	Bulb(float x, float y, float z, RGB rgb) 
+	{
 		point = point3(x,y,z);
 		color = rgb;
 	}

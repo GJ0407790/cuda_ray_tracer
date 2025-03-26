@@ -101,7 +101,7 @@ void parseLine(std::vector<std::string> words, StlConfig& config)
 	/*State setting*/
 	/*-------------*/
 	else if(words[0] == "color" && words.size() == 4){
-		double r,g,b;
+		float r,g,b;
 		r = stof(words[1]);g = stof(words[2]);
 		b = stof(words[3]);
 		config.color = {r,g,b};
@@ -128,7 +128,7 @@ void parseLine(std::vector<std::string> words, StlConfig& config)
 	/*Geometry setting*/
 	/*----------------*/
 	else if(words[0] == "sphere" && words.size() == 5){
-		double x,y,z,r;
+		float x,y,z,r;
 		Sphere* s;
 
 		x = stof(words[1]);y = stof(words[2]);
@@ -141,7 +141,7 @@ void parseLine(std::vector<std::string> words, StlConfig& config)
 		config.objects.push_back(obj);
 	}
 	else if(words[0] == "plane" && words.size() == 5){
-		double a,b,c,d;
+		float a,b,c,d;
 		a = stof(words[1]);b = stof(words[2]);
 		c = stof(words[3]);d = stof(words[4]);
 		Plane* p = new Plane(a,b,c,d,config.color);
@@ -150,7 +150,7 @@ void parseLine(std::vector<std::string> words, StlConfig& config)
 	}
 	/*Vertices*/
 	else if(words[0] == "xyz" && words.size() == 4){
-		double x,y,z;
+		float x,y,z;
 		x = stof(words[1]);y = stof(words[2]);
 		z = stof(words[3]);
 		Vertex* vert = new Vertex(x,y,z);
@@ -158,7 +158,7 @@ void parseLine(std::vector<std::string> words, StlConfig& config)
 	}
 	/*Triangle index*/
 	else if(words[0] == "tri" && words.size() == 4){
-		double i,j,k;
+		float i,j,k;
 		int size = config.vertices.size();
 		Triangle* t;
 		i = (stoi(words[1]) > 0) ? stoi(words[1]) - 1 : size + stoi(words[1]);
@@ -172,7 +172,7 @@ void parseLine(std::vector<std::string> words, StlConfig& config)
 		config.objects.push_back(obj);
 	}
 	else if(words[0] == "sun" && words.size() == 4){
-		double x,y,z;
+		float x,y,z;
 		x = stof(words[1]);y = stof(words[2]);
 		z = stof(words[3]);
 		Sun* s = new Sun(x,y,z,config.color);
@@ -180,7 +180,7 @@ void parseLine(std::vector<std::string> words, StlConfig& config)
 	}
 	/*Light bulb, a point of light in the scene*/
 	else if(words[0] == "bulb" && words.size() == 4){
-		double x,y,z;
+		float x,y,z;
 		x = stof(words[1]);y = stof(words[2]);
 		z = stof(words[3]);
 		Bulb* b = new Bulb(x,y,z,config.color);

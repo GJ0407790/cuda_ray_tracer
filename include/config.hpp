@@ -31,8 +31,8 @@ public:
   RGB color = {1.0,1.0,1.0};
   int bounces = 4;
   int aa = 0;
-  double dof_focus = 0;
-  double dof_lens = 0;
+  float dof_focus = 0.0f;
+  float dof_lens = 0.0f;
 
   vec3 forward;
   vec3 right;
@@ -40,12 +40,12 @@ public:
   point3 eye;
   vec3 target_up;
 
-  double expose = INT_MAX;
+  float expose = float(INFINITY);
   bool fisheye = false;
   bool panorama = false;
 
-  double ior = 1.458;
-  double rough = 0;
+  float ior = 1.458f;
+  float rough = 0.0f;
   int gi = 0;
   RGB trans;
   RGB shine;
@@ -65,8 +65,8 @@ struct RawConfig {
   RGB color;
   int bounces;
   int aa;
-  double dof_focus;
-  double dof_lens;
+  float dof_focus;
+  float dof_lens;
 
   vec3 forward;
   vec3 right;
@@ -74,12 +74,12 @@ struct RawConfig {
   point3 eye;
   vec3 target_up;
 
-  double expose;
+  float expose;
   bool fisheye;
   bool panorama;
 
-  double ior;
-  double rough;
+  float ior;
+  float rough;
   int gi;
   RGB trans;
   RGB shine;

@@ -42,3 +42,6 @@ Doxyfile
 *.out
 *.err
 .png
+
+# Executables
+raytracer*

@@ -10,12 +10,12 @@
 /*r,g,b from 0 to 1*/
 class RGB{
 public:
-	double r = 0.0;
-	double g = 0.0;
-	double b = 0.0;
+	float r = 0.0f;
+	float g = 0.0f;
+	float b = 0.0f;
 
-  __host__ __device__ RGB(): r(0.0),g(0.0),b(0.0){}
-	__host__ __device__ RGB(double r, double g, double b): r(r),g(g),b(b){}
+  __host__ __device__ RGB() {}
+	__host__ __device__ RGB(float r, float g, float b): r(r), g(g), b(b){}
   
 	__host__ __device__ bool operator==(const RGB& other) const 
 	{
@@ -36,13 +36,13 @@ public:
 /*r,g,b from 0 to 1*/
 class RGBA{
 public:
-	double r = 0.0;
-	double g = 0.0;
-	double b = 0.0;
-	double a = 0.0;
+	float r = 0.0f;
+	float g = 0.0f;
+	float b = 0.0f;
+	float a = 0.0f;
 
-	__host__ __device__ RGBA(): r(0.0),g(0.0),b(0.0),a(0.0){}
-	__host__ __device__ RGBA(double r,double g,double b,double a): r(r),g(g),b(b),a(a){}
+	__host__ __device__ RGBA() {}
+	__host__ __device__ RGBA(float r,float g,float b,float a): r(r),g(g),b(b),a(a){}
 	
 	__host__ __device__ RGBA operator+(const RGBA& other) const 
 	{
@@ -56,15 +56,9 @@ public:
 
 	__host__ __device__ RGBA mean(int aa)
 	{
-		double inv_aa = 1.0/aa;
+		float inv_aa = 1.0f / aa;
 		return RGBA(r * inv_aa, g * inv_aa, b * inv_aa, a * inv_aa);
 	}
 };
-
-/*u,v*/
-typedef struct{
-	double u = 0;
-	double v = 0;
-}Texcoord;
 
 #endif

@@ -7,25 +7,25 @@
 /*vector direction of a ray*/
 class vec3{
 public:
-	double x = 0.0;
-	double y = 0.0;
-	double z = 0.0;
+	float x = 0.0f;
+	float y = 0.0f;
+	float z = 0.0f;
 
-	__host__ __device__ vec3(){};
+	__host__ __device__ vec3() {};
 
-	__host__ __device__ vec3(double a,double b,double c): x(a),y(b),z(c) {};
+	__host__ __device__ vec3(float a,float b,float c): x(a),y(b),z(c) {};
 
 	__host__ __device__ bool operator==(const vec3& other) const {
 		return (x == other.x && y == other.y && z==other.z);
 	}
 
-	__host__ __device__ double operator[](size_t index) const{
+	__host__ __device__ float operator[](size_t index) const{
 		if (index == 0) return x;
 		else if (index == 1) return y;
 		else if (index == 2) return z;
 
 		printf("Out of bounds for %zu\n", index);
-		return 0.0;
+		return 0.0f;
   }
 
 	__host__ __device__ vec3 operator+(const vec3& other) const {
@@ -36,33 +36,35 @@ public:
 		return vec3(x-other.x,y-other.y,z-other.z);
 	}
 
-	__host__ __device__ vec3 operator*(double scalar) const {
+	__host__ __device__ vec3 operator*(float scalar) const {
 		return vec3(x * scalar,y * scalar,z * scalar);
 	}
 
-	__host__ __device__ vec3 operator/(double scalar) const {
+	__host__ __device__ vec3 operator/(float scalar) const {
 		return vec3(x / scalar,y / scalar,z / scalar);
 	}
 
-	__host__ __device__ friend vec3 operator*(double scalar, const vec3& other) {
+	__host__ __device__ friend vec3 operator*(float scalar, const vec3& other) {
 		return vec3(other.x * scalar, other.y * scalar, other.z * scalar);
 	}
 
-	__host__ __device__ double dot(const vec3& other) const {
+	__host__ __device__ float dot(const vec3& other) const {
 		return x * other.x + y * other.y + z * other.z;
 	}
 
-	__host__ __device__ double length() const {
+	__host__ __device__ float length() const {
 		return sqrt(x * x + y * y + z * z);
 	}
 
 	__host__ __device__ vec3 normalize() const {
-		double mag = length();
-		if (mag == 0) {
-			return vec3(0.0, 0.0, 0.0);
+		float mag = length();
+		
+		if (mag == 0.0f) 
+		{
+			return vec3(0.0f, 0.0f, 0.0f);
 		}
 
-		double inv_mag = 1 / mag;
+		float inv_mag = 1.0f / mag;
 		return vec3(x * inv_mag, y * inv_mag, z * inv_mag);
 	}
 
@@ -77,7 +79,7 @@ public:
 
 using point3 = vec3;
 
-__host__ __device__ inline double dot(const vec3& a, const vec3& b) {
+__host__ __device__ inline float dot(const vec3& a, const vec3& b) {
 	return a.x * b.x + a.y * b.y + a.z * b.z;
 }
 
