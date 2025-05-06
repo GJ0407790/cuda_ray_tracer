@@ -120,7 +120,7 @@ __device__ ObjectInfo Triangle::checkObject(Ray& ray)
 	//t is the distance the ray travels toward the triangle
 	float t = dot((p0 - ray.eye),nor) / (dot(ray.dir,nor));
 	
-	if(t <= 0) return ObjectInfo();
+	if(t <= 1e-6f) return ObjectInfo();
 
 	intersection_point = t * ray.dir + ray.eye;
 	auto barycenter = getBarycentric(*this, intersection_point);
@@ -131,13 +131,13 @@ __device__ ObjectInfo Triangle::checkObject(Ray& ray)
 
 	bool inside = (b0 >= -EPSILON) && (b1 >= -EPSILON) && (b2 >= -EPSILON);
 
-	if(!inside && t > 0.00000001f) //magic number, epsilon but smaller
+	if(!inside && t > 1e-8f) //magic number, epsilon but smaller
 	{
 		return ObjectInfo();
 	}
 	
 	t_color = this->getColor(b0, b1, b2);
-	normal = (dot(nor, ray.dir) < 0.0f) ? nor : -nor; //determine the direction normal points to
+	normal = (dot(nor, ray.dir) < 1e-6f) ? nor : -nor; //determine the direction normal points to
 	
 	return ObjectInfo(t, intersection_point, normal, mat); 
 }

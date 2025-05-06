@@ -66,7 +66,7 @@ public:
 
 	__device__ Ray() : bounce(0) {}
 	__device__ Ray(float x, float y, curandState* state, RawConfig* config);
-	__device__ Ray(point3 eye,vec3 dir,int bounce): eye(eye), dir(dir.normalize()),bounce(bounce){}
+	__device__ Ray(point3 eye, vec3 dir, int bounce): eye(eye), dir(dir.normalize()),bounce(bounce){}
 };
 
 class AABB {

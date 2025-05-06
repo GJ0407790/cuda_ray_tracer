@@ -46,26 +46,27 @@ __device__ float setExpose(float c, RawConfig* config)
 
 __device__ ObjectInfo unpackIntersection(const ObjectInfo& obj, const ObjectInfo& plane)
 {
-	//No object is intersecting this ray
-	if(!obj.isHit && !plane.isHit) return ObjectInfo();
+	const bool valid_obj = obj.isHit && obj.distance > 0.0f && !isnan(obj.distance);
+	const bool valid_plane = plane.isHit && plane.distance > 0.0f && !isnan(plane.distance);
 
-	float t1 = (obj.distance > 0.0f) ? obj.distance : FLT_MAX;
-	float t2 = (plane.distance > 0.0f) ? plane.distance : FLT_MAX;
-	float t = fmin(t1, t2);
+	if (!valid_obj && !valid_plane) 
+	{
+		return ObjectInfo();  // no valid intersections
+	}
 
-	if(t == obj.distance)
+	if (valid_obj && (!valid_plane || obj.distance < plane.distance)) 
 	{
 		return obj;
 	}
-	else if(t == plane.distance)
+
+	if (valid_plane) 
 	{
 		return plane;
 	}
-	else
-	{
-		printf("Error in function unpackIntersection");
-		return ObjectInfo();
-	}
+
+	// fallback, should never reach here
+	printf("unpackIntersection error: obj=%.5f, plane=%.5f\n", obj.distance, plane.distance);
+	return ObjectInfo();
 }
 
 __device__ BaryCenter getBarycentric(const Triangle& tri, const point3& point){

@@ -7,11 +7,11 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
-#SBATCH --constraint="perf,nvperf"
+#SBATCH --constraint=""
 #SBATCH --gpus-per-node=1
 #SBATCH --gpu-bind=closest
 #SBATCH --account=bche-delta-gpu
-#SBATCH -t 00:10:00
+#SBATCH -t 00:30:00
 
 module reset
 module load cuda
@@ -19,8 +19,8 @@ module load cuda
 echo -e "Job $SLURM_JOBID is starting on $(hostname)\n"
 
 # Define input and output files.
-INPUT_SCENE="redchair.txt"
+INPUT_SCENE="tenthousand.txt"
 
 # Run the raytracer.
+srun ./raytracer "$INPUT_SCENE"
 # srun compute-sanitizer ./raytracer "$INPUT_SCENE"
-srun nsys profile --stats=true ./raytracer "$INPUT_SCENE" > double.out

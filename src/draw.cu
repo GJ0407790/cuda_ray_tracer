@@ -137,7 +137,10 @@ __device__ RGBA diffuseLight(const ObjectInfo& obj, curandState* state, RawConfi
 		Ray shadow_ray(obj.i_point + obj.normal*EPSILON, light->dir,1);
 		auto sunInfo = hitNearest(shadow_ray, config);
 
-		if(sunInfo.isHit) continue;
+		if(sunInfo.isHit)
+		{
+			continue;
+		} 
 		
 		float lambert = fmax(dot(normal, light->dir.normalize()), 0.0f);
 		color = color + getColorSun(lambert, obj.mat.color, light->color, config);
@@ -152,9 +155,9 @@ __device__ RGBA diffuseLight(const ObjectInfo& obj, curandState* state, RawConfi
 
 		auto bulbInfo = hitNearest(shadow_ray, config);
 
-		if (bulbInfo.isHit)
+		if (bulbInfo.isHit && bulbInfo.distance < bulbDir.length())
 		{
-			if (bulbInfo.distance < bulbDir.length()) continue;
+			continue;
 		}
 
 		float lambert = fmax(dot(normal,bulbDir.normalize()), 0.0f);
@@ -378,7 +381,7 @@ __device__ ObjectInfo checkPlane(Ray& ray, bool exit_early, RawConfig* config){
 
 		float t = dot((plane->point - ray.eye), plane->nor) / (dot(ray.dir, plane->nor));
 		
-		if(t <= 0.0f)
+		if(t <= 1e-6f)
 		{
 			 continue;
 		}
@@ -399,7 +402,7 @@ __device__ ObjectInfo checkPlane(Ray& ray, bool exit_early, RawConfig* config){
 		return ObjectInfo();
 	}
 
-	return ObjectInfo(t_sol,p_sol,nor,mats); 
+	return ObjectInfo(t_sol, p_sol, nor,mats); 
 }
 
 /**

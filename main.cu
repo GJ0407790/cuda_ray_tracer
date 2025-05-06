@@ -72,7 +72,7 @@ int main(int argc, char* argv[]){
 	std::cout << "Transfer to host time: " << elapsed.count() << " seconds" << std::endl;
 
 	std::string output_path = host_stl_config.filename;
-	img.save(output_path.c_str());
+	// img.save(output_path.c_str());
 
 	// free host memory
 	freeStlConfig(host_stl_config);

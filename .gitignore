@@ -41,7 +41,13 @@ Doxyfile
 # Outputs
 *.out
 *.err
-.png
+*.png
 
 # Executables
 raytracer*
+
+# profile result
+*.sqlite
+*.nsys-rep
+*.ncu-rep
+GPUPathTracer/

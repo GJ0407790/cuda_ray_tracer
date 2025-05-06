@@ -19,7 +19,7 @@ public:
   
 	__host__ __device__ bool operator==(const RGB& other) const 
 	{
-		return (r == other.r && g == other.g && b == other.b);
+		return (fequal(r, other.r) && fequal(g, other.g) && fequal(b, other.b));
 	}
   
 	__host__ __device__ RGB operator-(const RGB& other) const 
