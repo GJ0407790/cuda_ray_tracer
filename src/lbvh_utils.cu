@@ -31,8 +31,8 @@ __device__ unsigned int quantize_coordinate(float coord, float scene_min_coord, 
 
 __global__ void generate_morton_codes_kernel(
   const PrimitiveReference* d_primitive_refs,
-  const Sphere* d_all_spheres_data,
-  const Triangle* d_all_triangles_data,
+  const SphereDataSoA& d_spheres_soa,
+  const TriangleDataSoA& d_triangles_soa,
   unsigned int* d_out_morton_codes,
   int num_total_primitives,
   float3 scene_min_corner,
@@ -47,12 +47,15 @@ __global__ void generate_morton_codes_kernel(
 
   if (ref.type == PrimitiveType::SPHERE) 
   {
-    centroid = d_all_spheres_data[ref.id_in_type_array].c;
+    centroid = d_spheres_soa.c[ref.id_in_type_array];
   } 
   else if (ref.type == PrimitiveType::TRIANGLE) 
   {
-    const Triangle& t = d_all_triangles_data[ref.id_in_type_array];
-    centroid = (t.p0 + t.p1 + t.p2) / 3.0f;
+    // Access vertices from SoA
+    point3 p0 = d_triangles_soa.p0[ref.id_in_type_array];
+    point3 p1 = d_triangles_soa.p1[ref.id_in_type_array];
+    point3 p2 = d_triangles_soa.p2[ref.id_in_type_array];
+    centroid = (p0 + p1 + p2) / 3.0f;
   } 
   else 
   {
@@ -85,8 +88,8 @@ void build_morton_codes_and_sort_primitives(RawConfig& config_with_device_data) 
   // Generate Morton codes
   generate_morton_codes_kernel<<<grid_size, block_size>>>(
     config_with_device_data.d_primitive_references, // Input refs (unsorted at this point)
-    config_with_device_data.d_all_spheres,
-    config_with_device_data.d_all_triangles,
+    *config_with_device_data.d_spheres_soa,
+    *config_with_device_data.d_triangles_soa,
     config_with_device_data.d_morton_codes,         // Output Morton codes
     config_with_device_data.num_total_primitives,
     config_with_device_data.scene_min_corner,

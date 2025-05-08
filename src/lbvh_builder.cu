@@ -32,16 +32,24 @@
 // Helper device function to get AABB of a primitive
 __device__ AABB get_primitive_aabb_device( // Renamed to avoid conflict if there's a host version
     const PrimitiveReference& ref,
-    const Sphere* d_all_spheres,
-    const Triangle* d_all_triangles)
+    const SphereDataSoA& spheres_soa,
+    const TriangleDataSoA& triangles_soa)
 {
   if (ref.type == PrimitiveType::SPHERE) 
   {
-    return d_all_spheres[ref.id_in_type_array].bbox;
+    point3 center = spheres_soa.c[ref.id_in_type_array];
+    float radius = spheres_soa.r[ref.id_in_type_array];
+    vec3 radius_vec(radius, radius, radius);
+
+    return AABB(center - radius_vec, center + radius_vec);
   } 
   else if (ref.type == PrimitiveType::TRIANGLE) 
   {
-    return d_all_triangles[ref.id_in_type_array].bbox;
+    point3 p0 = triangles_soa.p0[ref.id_in_type_array];
+    point3 p1 = triangles_soa.p1[ref.id_in_type_array];
+    point3 p2 = triangles_soa.p2[ref.id_in_type_array];
+
+    return AABB(p0, p1, p2);
   }
 
   // Return an empty/invalid AABB if type is unknown or ref is invalid
@@ -317,8 +325,8 @@ __global__ void set_aabb_kernel_adapted(
   LBVHNode* d_bvh_nodes,
   const int* d_parent_indices,
   const PrimitiveReference* d_primitive_refs, // From RawConfig.d_primitive_references (sorted)
-  const Sphere* d_all_spheres,                // From RawConfig.d_all_spheres
-  const Triangle* d_all_triangles,            // From RawConfig.d_all_triangles
+  const SphereDataSoA& spheres_soa,           
+  const TriangleDataSoA& triangles_soa,       
   unsigned int num_primitives,                // N
   unsigned int leaf_node_start_idx)
 {
@@ -334,8 +342,8 @@ __global__ void set_aabb_kernel_adapted(
   //    to primitive_sorted_idx.
   leaf_node.bbox = get_primitive_aabb_device(
       d_primitive_refs[leaf_node.primitive_offset], // Use the offset stored in the leaf
-      d_all_spheres,
-      d_all_triangles);
+      spheres_soa,
+      triangles_soa);
 
   // 3. Traverse upwards to update parent AABBs.
   int parent_global_idx = d_parent_indices[current_node_global_idx];
@@ -456,8 +464,8 @@ void build_lbvh_karas(RawConfig& config, int morton_bits /* = 30 */)
       config.d_lbvh_nodes,
       d_parent_indices,
       config.d_primitive_references, // Assumed to be sorted by Morton code
-      config.d_all_spheres,
-      config.d_all_triangles,
+      *config.d_spheres_soa,
+      *config.d_triangles_soa,
       N, // num_primitives (num_leaf_nodes)
       leaf_node_start_idx
   );

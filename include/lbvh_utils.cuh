@@ -7,11 +7,12 @@
 // Kernel to generate Morton codes
 __global__ void generate_morton_codes_kernel(
 	const PrimitiveReference* d_primitive_refs, // Input: array of primitive references
-	const Sphere* d_all_spheres_data,           // Input: SoA sphere data
-	const Triangle* d_all_triangles_data,       // Input: SoA triangle data
+	const SphereDataSoA& d_spheres_soa,       
+  const TriangleDataSoA& d_triangles_soa,     
 	unsigned int* d_out_morton_codes,           // Output: Morton codes
 	int num_total_primitives,
-	const AABB& scene_bounds,
+	float3 scene_min_corner,
+	float3 scene_max_corner,
 	int morton_bits_per_dim
 );
 

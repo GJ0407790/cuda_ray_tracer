@@ -6,6 +6,87 @@
 
 #define EPSILON 0.001f
 
+__global__ void finalize_kernel(pixel_t* d_image, const float4* d_accum_buffer, const int img_width, const int img_height, const int aa) 
+{
+	// Use standard 1D grid-stride loop or simple index calculation
+	const int pixel_idx = blockDim.x * blockIdx.x + threadIdx.x;
+	const int total_pixels = img_width * img_height;
+
+	if (pixel_idx >= total_pixels) {
+		return;
+	}
+
+	// Read accumulated value
+	float4 accumulated_rgba = d_accum_buffer[pixel_idx];
+
+	// Calculate average color
+	float inv_aa = 1.0f / (float)aa; // Ensure float division
+	float avg_r = accumulated_rgba.x * inv_aa;
+	float avg_g = accumulated_rgba.y * inv_aa;
+	float avg_b = accumulated_rgba.z * inv_aa;
+	float avg_a = accumulated_rgba.w * inv_aa;
+
+	// Apply gamma correction and convert to unsigned char for final image
+	// Ensure results are clamped to [0, 255]
+	int r_final = (int)(fminf(fmaxf(RGBtosRGB(avg_r), 0.0f), 1.0f) * 255.0f + 0.5f); // Add 0.5 for rounding
+	int g_final = (int)(fminf(fmaxf(RGBtosRGB(avg_g), 0.0f), 1.0f) * 255.0f + 0.5f);
+	int b_final = (int)(fminf(fmaxf(RGBtosRGB(avg_b), 0.0f), 1.0f) * 255.0f + 0.5f);
+	int a_final = (int)(fminf(fmaxf(avg_a, 0.0f), 1.0f) * 255.0f + 0.5f);         // Alpha usually not gamma corrected
+
+	// Write to output image buffer
+	int h = pixel_idx / img_width;
+	int w = pixel_idx % img_width;
+	int image_offset = h * img_width + w;
+
+	d_image[image_offset].r = (unsigned char)r_final;
+	d_image[image_offset].g = (unsigned char)g_final;
+	d_image[image_offset].b = (unsigned char)b_final;
+	d_image[image_offset].a = (unsigned char)a_final;
+}
+
+__global__ void render_kernel_atomic_aa(float4* d_accum_buffer, const int img_width, const int img_height, const int aa, RawConfig* config)
+{
+	// Calculate global thread ID
+	const int tid = blockDim.x * blockIdx.x + threadIdx.x;
+	const int total_pixels = img_width * img_height;
+    const int total_samples = total_pixels * aa;
+
+	// Check if thread is out of bounds (for total samples)
+	if (tid >= total_samples) {
+		return; 
+	}
+
+	// Determine pixel index and sample index for this thread
+	const int pixel_idx = tid / aa; 
+	const int sample_idx_in_pixel = tid % aa; // Useful for stratified/correlated sampling if desired
+
+	// Calculate pixel coordinates (w, h)
+	const int w = pixel_idx % img_width; 
+	const int h = pixel_idx / img_width; 
+
+	// Setup unique RNG state for this thread (sample)
+	curandState state;
+	// Seed using global thread ID (tid) for uniqueness across all samples
+	curand_init(1234 + pixel_idx, sample_idx_in_pixel, 0, &state); // Example seeding variation
+
+	// Generate jittered coordinates within the pixel [w, w+1), [h, h+1)
+	// Using simple uniform random jitter for now
+	float jitter_x = randD(-0.5f, 0.5f, &state);
+	float jitter_y = randD(-0.5f, 0.5f, &state);
+	// Add stratified or other sampling patterns here if needed, using sample_idx_in_pixel
+
+	float sample_w = (float)w + jitter_x;
+	float sample_h = (float)h + jitter_y;
+
+	// Shoot one primary ray for this sample
+	RGBA rgba_sample = shootPrimaryRay(sample_w, sample_h, &state, config);
+
+	atomicAdd(&d_accum_buffer[pixel_idx].x, rgba_sample.r);
+	atomicAdd(&d_accum_buffer[pixel_idx].y, rgba_sample.g);
+	atomicAdd(&d_accum_buffer[pixel_idx].z, rgba_sample.b);
+	atomicAdd(&d_accum_buffer[pixel_idx].w, rgba_sample.a); // Accumulate alpha too
+}
+
 __global__ void render_kernel(pixel_t* d_image, const int img_width, const int img_height, const int aa, RawConfig* config)
 {
 	const int tid = blockDim.x * blockIdx.x + threadIdx.x;
@@ -49,11 +130,65 @@ __global__ void render_kernel(pixel_t* d_image, const int img_width, const int i
 
 void render(pixel_t* d_image, const int img_width, const int img_height, const int aa, RawConfig* config)
 {
-	constexpr int block_size = 128;
-	int grid_size = (img_width * img_height - 1) / block_size + 1;
+	if (aa <= 1) { 
+		constexpr int block_size = 128;
+		int grid_size = (img_width * img_height - 1) / block_size + 1;
 
-	render_kernel<<<grid_size, block_size>>>(d_image, img_width, img_height, aa, config);
+		render_kernel<<<grid_size, block_size>>>(d_image, img_width, img_height, aa, config);
+
+		return;
+	}
+
+	// --- Atomic AA Path (assuming aa >= 1) ---
+
+	// 1. Allocate accumulation buffer (using float4 for RGBA)
+	float4* d_accum_buffer = nullptr;
+	size_t accum_buffer_size = (size_t)img_width * img_height * sizeof(float4);
+	cudaMalloc(&d_accum_buffer, accum_buffer_size);
+	cudaMemset(d_accum_buffer, 0, accum_buffer_size); // Initialize sums to zero
+
+	// 2. Launch render kernel (one thread per sample)
+	constexpr int block_size = 128; // Or tune this
+	// Total threads needed: width * height * aa (if aa=0 was handled, use max(1,aa))
+	int total_threads = img_width * img_height * aa;
+	int grid_size = (total_threads + block_size - 1) / block_size;
+
+	printf("[DEBUG Render] Launching AA Kernel. Total Threads: %d, Grid: %d, Block: %d\n", total_threads, grid_size, block_size); // Debug
+	render_kernel_atomic_aa<<<grid_size, block_size>>>(
+		d_accum_buffer, 
+		img_width, 
+		img_height, 
+		aa, // Pass effective_aa
+		config
+	);
+
+	// 3. Launch finalize kernel (one thread per pixel)
+	int finalize_total_threads = img_width * img_height;
+	int finalize_grid_size = (finalize_total_threads + block_size - 1) / block_size;
+	
+  printf("[DEBUG Render] Launching Finalize Kernel. Total Threads: %d, Grid: %d, Block: %d\n", finalize_total_threads, finalize_grid_size, block_size); // Debug
+	finalize_kernel<<<finalize_grid_size, block_size>>>(
+		d_image,
+		d_accum_buffer,
+		img_width,
+		img_height,
+		aa // Pass effective_aa for averaging
+	);
+
+	// 4. Free accumulation buffer
+	cudaFree(d_accum_buffer);
+
+    // Optional: Synchronize if timing or subsequent steps depend on completion
+    // cudaDeviceSynchronize(); 
 }
+
+// void render(pixel_t* d_image, const int img_width, const int img_height, const int aa, RawConfig* config)
+// {
+// 	constexpr int block_size = 128;
+// 	int grid_size = (img_width * img_height - 1) / block_size + 1;
+
+// 	render_kernel<<<grid_size, block_size>>>(d_image, img_width, img_height, aa, config);
+// }
 
 /**
  * @brief Shoots a primary ray into the scene, at pixel location (x,y).

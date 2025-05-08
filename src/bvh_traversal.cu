@@ -62,11 +62,19 @@ __device__ bool intersect_leaf_primitives(
 
   if (prim_ref.type == PrimitiveType::SPHERE) 
   {
-    hit_info_this_primitive = (config->d_all_spheres)[prim_ref.id_in_type_array].checkObject(input_ray);
+    hit_info_this_primitive = checkSphereIntersectionSoA(
+                                input_ray,
+                                prim_ref.id_in_type_array,
+                                *config->d_spheres_soa,
+                                config);
   } 
   else if (prim_ref.type == PrimitiveType::TRIANGLE) 
   {
-    hit_info_this_primitive = (config->d_all_triangles)[prim_ref.id_in_type_array].checkObject(input_ray);
+    hit_info_this_primitive = checkTriangleIntersectionSoA(
+                                input_ray,
+                                prim_ref.id_in_type_array,
+                                *config->d_triangles_soa,
+                                config);
   }
 
   if (hit_info_this_primitive.isHit && hit_info_this_primitive.distance > 1e-6f && /* ray_t_min usually 0 or epsilon */

@@ -19,6 +19,9 @@ class Triangle;
 class Sphere;
 struct PrimitiveReference;
 struct LBVHNode;
+class Materials;
+class SphereDataSoA;
+class TriangleDataSoA;
 
 class StlConfig
 {
@@ -95,9 +98,9 @@ struct RawConfig {
   RGB shine;
 
   // Device pointers for SoA primitive data
-  Sphere* d_all_spheres;
+  SphereDataSoA* d_spheres_soa;
   int num_spheres;
-  Triangle* d_all_triangles;
+  TriangleDataSoA* d_triangles_soa;
   int num_triangles;
 
   // Device array for primitive references (this one gets sorted by Morton code)
@@ -112,7 +115,6 @@ struct RawConfig {
   // --- LBVH Data ---
   LBVHNode* d_lbvh_nodes;
   int num_lbvh_nodes; // Total nodes in the BVH (2 * num_leaf_nodes - 1, or similar)
-
 
   // Pointers to device memory for lights, planes etc. (as before)
   int num_sun;

@@ -61,86 +61,105 @@ __device__ Ray::Ray(float x, float y, curandState* state, RawConfig* config){
 	dir = dir.normalize();
 }
 
-__device__ Sphere::UV Sphere::sphereUV(const point3& point) const {
-	vec3 s_coord = point - this->c;
-
-	float u = (atan2(s_coord.z,s_coord.x) + PI) /(PI * 2.0f);
-	float v = acos(s_coord.y / this->r) / PI;
-
-	return UV(u,v);
-}
-
-__device__ RGB Sphere::getColor(const point3& point) const
+__device__ ObjectInfo checkSphereIntersectionSoA(
+	const Ray& ray,
+	unsigned int sphere_idx,
+	const SphereDataSoA& spheres_soa,
+	const RawConfig* config // Unused for now, but good for consistency
+) 
 {
-	return mat.color;
-}
+	point3 s_center = spheres_soa.c[sphere_idx];
+	float s_radius = spheres_soa.r[sphere_idx];
+	// Materials s_mat = spheres_soa.mat[sphere_idx]; // Load full material struct
 
-__device__ RGB Triangle::getColor(float b0, float b1, float b2) const
-{
-	return mat.color;
-}
-
-__device__ ObjectInfo Sphere::checkObject(const Ray& ray) const
-{
 	vec3 nor;
-	RGB s_color;
-	vec3 cr0 = (c - ray.eye);
-	bool inside = (cr0.dot(cr0) < r * r);
+	// RGB s_color_val; // Not needed if we pass Materials struct
 
-	float tc = cr0.dot(ray.dir) / ray.dir.length();
-	
-	if(!inside && tc < 0.0f) return ObjectInfo();
+	vec3 cr0 = (s_center - ray.eye);
+	bool inside = (cr0.dot(cr0) < s_radius * s_radius);
 
-	vec3 d = ray.eye + (tc * ray.dir) - c;
-	float d2 = pow(d.length(), 2);
+	float tc = cr0.dot(ray.dir); // Removed / ray.dir.length() as ray.dir should be normalized
 
-	if(!inside && pow(r, 2) < d2) return ObjectInfo();
+	if(!inside && tc < 0.0f) return ObjectInfo(); // No hit
 
-	//difference between t and tc
-	//the two intersecting points are generated
-	float t_offset = sqrt(pow(r, 2) - d2) / ray.dir.length();
-	float t;
+	vec3 d_vec = ray.eye + (tc * ray.dir) - s_center; // d_vec instead of d to avoid redefinition if EPSILON is d
+	float d2 = d_vec.dot(d_vec); // Use dot product for squared length
 
-	if(inside) t = tc + t_offset;
-	else t = tc - t_offset;
-	
-	point3 p = t * ray.dir + ray.eye;
-	s_color = this->getColor(p);
-	
-	nor = (inside) ? 1.0f/r * (c - p) : 1.0f/r * (p - c);
-	
-	return ObjectInfo(t,p,nor,mat); 
+	if(!inside && (s_radius * s_radius) < d2) return ObjectInfo(); // No hit
+
+	float t_offset = sqrt((s_radius * s_radius) - d2); // Removed / ray.dir.length()
+
+	float t_intersect;
+	if(inside) 
+	{
+		t_intersect = tc + t_offset;
+	} 
+	else 
+	{
+		t_intersect = tc - t_offset;
+	}
+
+	point3 p_intersect = t_intersect * ray.dir + ray.eye;
+	// s_color_val = s_mat.color; // Color is part of s_mat
+
+	nor = (inside) ? (s_center - p_intersect) : (p_intersect - s_center);
+	nor = nor.normalize(); // Ensure normal is unit length (division by r was implicit normalize)
+
+	return ObjectInfo(t_intersect, p_intersect, nor, spheres_soa.mat[sphere_idx]);
 }
 
-__device__ ObjectInfo Triangle::checkObject(const Ray& ray) const
+__device__ ObjectInfo checkTriangleIntersectionSoA(
+	const Ray& ray,
+	unsigned int triangle_idx,
+	const TriangleDataSoA& triangles_soa,
+	const RawConfig* config) 
 {
+	point3 t_p0 = triangles_soa.p0[triangle_idx];
+	vec3 t_nor_precomputed = triangles_soa.nor[triangle_idx];
+
 	point3 intersection_point;
-	RGB t_color;
-	vec3 normal;
-	//t is the distance the ray travels toward the triangle
-	float t = dot((p0 - ray.eye),nor) / (dot(ray.dir,nor));
-	
-	if(t <= 1e-6f)
-	{
+	vec3 final_normal;
+
+	float denominator = dot(ray.dir, t_nor_precomputed);
+
+	if (fabsf(denominator) < 1e-9f) // Ray is parallel or grazing
+	{ 
+		return ObjectInfo(); 
+	}
+
+	float t_intersect = dot((t_p0 - ray.eye), t_nor_precomputed) / denominator;
+
+	if (t_intersect <= EPSILON) // Intersection is behind or too close
+	{ 
 		return ObjectInfo();
 	} 
 
-	intersection_point = t * ray.dir + ray.eye;
-	auto barycenter = getBarycentric(*this, intersection_point);
+	intersection_point = t_intersect * ray.dir + ray.eye;
 
-	float b0 = barycenter.b0;
-	float b1 = barycenter.b1;
-	float b2 = barycenter.b2;
+	// INLINED Barycentric check using precomputed e1, e2 from SoA
+	point3 t_e1_bary = triangles_soa.e1[triangle_idx];
+	point3 t_e2_bary = triangles_soa.e2[triangle_idx];
 
-	bool inside = (b0 >= -EPSILON) && (b1 >= -EPSILON) && (b2 >= -EPSILON);
+	float b1_val = dot(t_e1_bary, intersection_point - t_p0);
+	float b2_val = dot(t_e2_bary, intersection_point - t_p0);
+	float b0_val = 1.0f - b1_val - b2_val;
 
-	if(!inside && t > 1e-8f) //magic number, epsilon but smaller
+	// Check if point is within triangle bounds
+	// A common check is b0, b1, b2 all >= 0.
+	// Sometimes a small epsilon is used for robustness at edges.
+	bool inside = (b0_val >= -EPSILON) && 
+								(b1_val >= -EPSILON) && 
+								(b2_val >= -EPSILON);
+
+	if(!inside) 
 	{
-		return ObjectInfo();
+		return ObjectInfo(); // Not within triangle
 	}
-	
-	t_color = this->getColor(b0, b1, b2);
-	normal = (dot(nor, ray.dir) < 1e-6f) ? nor : -nor; //determine the direction normal points to
-	
-	return ObjectInfo(t, intersection_point, normal, mat); 
+
+	// Determine the direction normal points to
+	final_normal = (denominator < 0.0f) ? t_nor_precomputed : -t_nor_precomputed; 
+
+	return ObjectInfo(t_intersect, intersection_point, final_normal, triangles_soa.mat[triangle_idx]);
 }
+
+

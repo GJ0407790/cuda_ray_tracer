@@ -134,11 +134,18 @@ void parseLine(std::vector<std::string> words, StlConfig& config, AABB& running_
 		z = stof(words[3]);r = stof(words[4]);
 
 		config.host_spheres_data.emplace_back(x, y, z, r, config.color);
-		config.host_spheres_data.back().setProperties(config.shine, config.trans, config.ior, config.rough);
+
+		auto& sphere = config.host_spheres_data.back();
+
+		sphere.mat.shininess = config.shine;
+		sphere.mat.trans = config.trans;
+		sphere.mat.ior = config.ior;
+		sphere.mat.roughness = config.rough;
 
 		config.host_primitive_references.emplace_back(PrimitiveType::SPHERE, config.host_spheres_data.size() - 1);
 
-		const auto& prim_bbox = config.host_spheres_data.back().bbox;
+		auto rvec = vec3(sphere.r, sphere.r, sphere.r);
+		const auto& prim_bbox = AABB(sphere.c - rvec, sphere.c + rvec);
 
 		running_scene_bounds.x.min = fminf(running_scene_bounds.x.min, prim_bbox.x.min);
 		running_scene_bounds.x.max = fmaxf(running_scene_bounds.x.max, prim_bbox.x.max);
@@ -167,17 +174,23 @@ void parseLine(std::vector<std::string> words, StlConfig& config, AABB& running_
 	else if(words[0] == "tri" && words.size() == 4){
 		float i,j,k;
 		int size = config.vertex_data.size();
-		Triangle* t;
+
 		i = (stoi(words[1]) > 0) ? stoi(words[1]) - 1 : size + stoi(words[1]);
 		j = (stoi(words[2]) > 0) ? stoi(words[2]) - 1 : size + stoi(words[2]);
 		k = (stoi(words[3]) > 0) ? stoi(words[3]) - 1 : size + stoi(words[3]);
 
 		config.host_triangles_data.emplace_back(config.vertex_data[i], config.vertex_data[j], config.vertex_data[k], config.color);
-		config.host_triangles_data.back().setProperties(config.shine,config.trans,config.ior,config.rough); 
+
+		auto& tri = config.host_triangles_data.back();
+
+		tri.mat.shininess = config.shine;
+		tri.mat.trans = config.trans;
+		tri.mat.ior = config.ior;
+		tri.mat.roughness = config.rough;
 
 		config.host_primitive_references.emplace_back(PrimitiveType::TRIANGLE, config.host_triangles_data.size() - 1);
 
-		const auto& prim_bbox = config.host_triangles_data.back().bbox;
+		const auto& prim_bbox = AABB(tri.p0, tri.p1, tri.p2);
 
 		running_scene_bounds.x.min = fminf(running_scene_bounds.x.min, prim_bbox.x.min);
 		running_scene_bounds.x.max = fmaxf(running_scene_bounds.x.max, prim_bbox.x.max);

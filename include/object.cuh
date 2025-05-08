@@ -94,20 +94,9 @@ struct PrimitiveReference
  */
 class Sphere {
 public:
-	struct UV 
-	{
-		float u;
-		float v;
-
-		__device__ UV(float u_val, float v_val)
-								: u(u_val), v(v_val) {}
-	};
-
-public:
 	point3 c; //!< Center point of the sphere.
 	float r; //!< Radius of the sphere.
 	Materials mat; //!< Material properties.
-	AABB bbox; //!< Axis-aligned bounding box for the Object class. For BVH traversal.
 
 	/**
 	 * @brief Construct a new Sphere object with no inputs
@@ -124,26 +113,9 @@ public:
 	{
 		c = point3(x, y, z);
 		mat.color = rgb;
-		auto rvec = vec3(r, r, r);
-    bbox = AABB(c - rvec, c + rvec);
-	}
-
-	__host__ __device__ void setProperties(RGB shine, RGB tran, float ior, float roughness) 
-	{
-		mat.shininess = shine;
-		mat.trans = tran;
-		mat.ior = ior;
-		mat.roughness = roughness;
-	}
-
-	__host__ __device__ AABB getBox() const 
-	{
-		return bbox;
 	}
 
   __device__ ObjectInfo checkObject(const Ray& ray) const;	
-	__device__ Sphere::UV sphereUV(const point3& point) const;
-	__device__ RGB getColor(const point3& point) const;
 };
 
 /**
@@ -196,7 +168,6 @@ public:
 	vec3 nor;  //!< Normal of the triangle.
 	point3 e1,e2; //!< The e1,e2 coordinates, precomputed for Barycentric calculation.
 	Materials mat; //!< Material properties.
-	AABB bbox; //!< Axis-aligned bounding box for the Object class. For BVH traversal.
 
 	Triangle()
 	{
@@ -217,24 +188,46 @@ public:
 		
 		e1 = (1 / (dot(a1, p1 - p0))) * a1;
 		e2 = (1 / (dot(a2, p2 - p0))) * a2;
-
-		bbox = AABB(a.p, b.p, c.p);
-	}
-
-	__host__ __device__ AABB getBox() const {
-		return bbox;
-	}
-
-	__host__ __device__ void setProperties(RGB shine,RGB tran,float ior,float roughness) {
-		mat.shininess = shine;
-		mat.trans = tran;
-		mat.ior = ior;
-		mat.roughness = roughness;
 	}
 
 	__device__ ObjectInfo checkObject(const Ray& ray) const;
-	__device__ RGB getColor(float b0,float b1,float b2) const;
 };
+
+struct SphereDataSoA 
+{
+  point3* c;      // Device pointer to array of centers
+  float* r;       // Device pointer to array of radii
+  Materials* mat; // Device pointer to array of materials
+
+  SphereDataSoA() : c(nullptr), r(nullptr), mat(nullptr) {}
+};
+
+struct TriangleDataSoA 
+{
+  point3* p0;
+  point3* p1;
+  point3* p2;
+  vec3* nor;
+  point3* e1;     // For barycentric calculation
+  point3* e2;     // For barycentric calculation
+  Materials* mat;
+
+  TriangleDataSoA() : p0(nullptr), p1(nullptr), p2(nullptr), nor(nullptr), e1(nullptr), e2(nullptr), mat(nullptr) {}
+};
+
+__device__ ObjectInfo checkSphereIntersectionSoA(
+	const Ray& ray,
+	unsigned int sphere_idx,
+	const SphereDataSoA& spheres_soa,
+	const RawConfig* config // Pass if global settings like EPSILON are needed from config
+);
+
+__device__ ObjectInfo checkTriangleIntersectionSoA(
+	const Ray& ray,
+	unsigned int triangle_idx,
+	const TriangleDataSoA& triangles_soa,
+	const RawConfig* config // Pass if global settings like EPSILON are needed from config
+);
 
 class Sun{
 public:
