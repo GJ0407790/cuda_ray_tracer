@@ -84,7 +84,6 @@ void copyConfigDataToDevice(const StlConfig& host_stl, RawConfig& rc_with_device
 
 	if (rc_with_device_ptrs.num_total_primitives > 0) 
 	{
-		std::cout << "Number of total primitives: " << rc_with_device_ptrs.num_total_primitives << std::endl;
 		cudaError_t err = cudaMalloc(&rc_with_device_ptrs.d_primitive_references, rc_with_device_ptrs.num_total_primitives * sizeof(PrimitiveReference));
 		if (err != cudaSuccess) { std::cerr << "CUDA Malloc failed for d_primitive_references: " << cudaGetErrorString(err) << std::endl; return; }
 		err = cudaMemcpy(rc_with_device_ptrs.d_primitive_references, host_stl.host_primitive_references.data(), rc_with_device_ptrs.num_total_primitives * sizeof(PrimitiveReference), cudaMemcpyHostToDevice);

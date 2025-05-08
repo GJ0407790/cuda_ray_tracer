@@ -19,7 +19,7 @@ module load cuda
 echo -e "Job $SLURM_JOBID is starting on $(hostname)\n"
 
 # Define input and output files.
-INPUT_SCENE="redchair.txt"
+INPUT_SCENE="tenthousand.txt"
 
 # Run the raytracer.
 srun ./raytracer "$INPUT_SCENE"

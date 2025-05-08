@@ -1,5 +1,6 @@
 #include "draw.cuh"
 #include "helper.cuh"
+#include "bvh_traversal.cuh"
 
 #include <math.h>
 
@@ -99,14 +100,30 @@ __device__ RGBA shootPrimaryRay(float x, float y, curandState* state, RawConfig*
  */
 __device__ ObjectInfo hitNearest(Ray& ray, RawConfig* config)
 {
-	return ObjectInfo();
-	// if(ray.bounce == 0) return ObjectInfo();
+	if(ray.bounce == 0) return ObjectInfo();
 
-	// auto object_tuple = config->bvh_head->checkObject(ray);
-	// auto plane_tuple = checkPlane(ray, false, config);
-	// auto closest_object = unpackIntersection(object_tuple, plane_tuple);
+	// Initial t_max for the ray. Can be from a global scene extent or a large number.
+	// If your Ray struct has a t_max member, use that. Otherwise, pass a large float.
+	float initial_ray_t_max = float(INFINITY); // Or some other suitable large value
+
+	// Call the LBVH traversal function
+	ObjectInfo bvh_hit = traverse_lbvh(ray, config, initial_ray_t_max);
+	ObjectInfo plane_hit = checkPlane(ray, false, config); 
+
+	if (bvh_hit.isHit && plane_hit.isHit) 
+	{
+		return (bvh_hit.distance < plane_hit.distance) ? bvh_hit : plane_hit;
+	} 
+	else if (bvh_hit.isHit) 
+	{
+		return bvh_hit;
+	} 
+	else if (plane_hit.isHit) 
+	{
+		return plane_hit;
+	}
 	
-	// return closest_object;
+	return ObjectInfo();
 }
 
 /**

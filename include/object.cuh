@@ -69,54 +69,6 @@ public:
 	__device__ Ray(point3 eye, vec3 dir, int bounce): eye(eye), dir(dir.normalize()),bounce(bounce){}
 };
 
-// __device__ bool is_intersect(const Ray& r, const AABB& bbox) 
-// {
-// 	const point3& ray_eye = r.eye;
-// 	const vec3&   ray_dir = r.dir;
-
-// 	float t_min = float(-INFINITY);
-// 	float t_max = float(INFINITY);
-
-// 	for (int axis = 0; axis < 3; axis++) 
-// 	{
-// 		const Interval& ax = bbox.getAxis(axis);
-		
-// 		if (ax.min > ax.max) 
-// 		{
-// 			return false;
-// 		}
-
-// 		const float adinv = 1.0f / ray_dir[axis];
-
-// 		float t0 = (ax.min - ray_eye[axis]) * adinv;
-// 		float t1 = (ax.max - ray_eye[axis]) * adinv;
-
-// 		// Manual swap
-// 		if (t0 > t1) {
-// 			float temp = t0;
-// 			t0 = t1;
-// 			t1 = temp;
-// 		}
-
-// 		if (t0 > t_min)
-// 		{
-// 			t_min = t0;
-// 		}
-
-// 		if (t1 < t_max)
-// 		{
-// 			t_max = t1;
-// 		}
-
-// 		if (t_max <= t_min) 
-// 		{
-// 			return false;
-// 		}
-// 	}
-
-// 	return true;
-// }
-
 enum class PrimitiveType 
 {
 	SPHERE,
@@ -189,9 +141,9 @@ public:
 		return bbox;
 	}
 
-  __device__ ObjectInfo checkObject(Ray& ray);	
+  __device__ ObjectInfo checkObject(const Ray& ray) const;	
 	__device__ Sphere::UV sphereUV(const point3& point) const;
-	__device__ RGB getColor(const point3& point);
+	__device__ RGB getColor(const point3& point) const;
 };
 
 /**
@@ -280,8 +232,8 @@ public:
 		mat.roughness = roughness;
 	}
 
-	__device__ ObjectInfo checkObject(Ray& ray);
-	__device__ RGB getColor(float b0,float b1,float b2);
+	__device__ ObjectInfo checkObject(const Ray& ray) const;
+	__device__ RGB getColor(float b0,float b1,float b2) const;
 };
 
 class Sun{

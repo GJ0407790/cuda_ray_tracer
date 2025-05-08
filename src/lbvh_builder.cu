@@ -92,58 +92,87 @@ __device__ __forceinline__ int adapted_delta(
   return __clz(ka ^ kb);
 }
 
-// i is the index of the current primitive in the sorted list (0 to n-1)
 __device__ __forceinline__ int2 determine_range_adapted(
-  const unsigned int *sorted_morton_codes,
-  unsigned int n, // num_primitives
-  int i)          // current primitive index
+	const unsigned int *sorted_morton_codes,
+	unsigned int n, // num_primitives
+	int i)          // current internal node index (0 to n-2)
 {
-  // Determine direction of the range (+1 or -1)
-  // Compare with primitive i-1 and i+1
-  const int delta_l = adapted_delta(i, i - 1, n, sorted_morton_codes);
-  const int delta_r = adapted_delta(i, i + 1, n, sorted_morton_codes);
+	// Calculate deltas relative to split point 'i'
+	// delta_l compares primitive i with primitive i-1
+	// delta_r compares primitive i with primitive i+1
+	const int delta_l = adapted_delta(i, i - 1, n, sorted_morton_codes);
+	const int delta_r = adapted_delta(i, i + 1, n, sorted_morton_codes);
 
-  int d; // direction
-  int delta_min_val; // min of delta_r and delta_l
-  
-  if (delta_r < delta_l) 
-  { // Note: original code logic here might be slightly different if -1 is returned by delta
-    d = -1;
-    delta_min_val = delta_r;
-    if (delta_r == -1) delta_min_val = delta_l; // If right is invalid, use left
-  } 
-  else 
-  {
-    d = 1;
-    delta_min_val = delta_l;
-    if (delta_l == -1) delta_min_val = delta_r; // If left is invalid, use right
-  }
+	// Determine direction 'd' and minimum delta 'delta_min_val'
+	// The direction points towards the neighbor with the LARGER delta (longer shared prefix).
+	// The minimum delta determines how far we need to search.
+	int d; // direction (+1 or -1)
+	int delta_min_val;
 
-  // If both are -1 (e.g., n=1, i=0), range is just i.
-  if (delta_min_val == -1 && n == 1 && i == 0) return make_int2(0,0);
+	// Handle edge case N=1 (no internal nodes, kernel shouldn't run, but safe check)
+	if (n <= 1) {
+	    return make_int2(i, i);
+	}
 
-  // Compute upper bound of the length of the range
-  unsigned int l_max = 2;
-  // Ensure i + l_max * d is a valid index before calling delta
-  while (adapted_delta(i, i + l_max * d, n, sorted_morton_codes) > delta_min_val) 
-  {
-    l_max <<= 1;
-  }
+	// Determine search direction and threshold delta
+	if (delta_r > delta_l) { // Search RIGHT (positive direction)
+		d = 1;
+		delta_min_val = delta_l; // Threshold is the delta to the non-search side (or -1 if invalid)
+	} else { // Search LEFT (negative direction)
+		d = -1;
+		delta_min_val = delta_r; // Threshold is the delta to the non-search side (or -1 if invalid)
+	}
 
-  // Find other end using binary search
-  unsigned int l = 0;
-  for (unsigned int t = l_max >> 1; t > 0; t >>= 1) 
-  {
-    if (adapted_delta(i, i + (l + t) * d, n, sorted_morton_codes) > delta_min_val) 
-    {
-      l += t;
-    }
-  }
-  const int j = i + l * d;
+    // Need to handle case where one neighbor is invalid (delta = -1)
+    // If delta_l == -1, delta_min_val becomes delta_r, d becomes 1 (search right).
+    // If delta_r == -1, delta_min_val becomes delta_l, d becomes -1 (search left).
+    // If both are -1 (only possible if N=1, handled above), delta_min_val = -1.
 
-  // Ensure i <= j (or min_idx, max_idx)
-  return i < j ? make_int2(i, j) : make_int2(j, i);
+
+	// Compute upper bound 'l_max' for the search length using exponential search
+	unsigned int l_max = 1; // Start checking offset 1*d, then 2*d, 4*d, etc.
+	int neighbor_idx_exp = i + l_max * d;
+
+	// Check initial neighbor before loop
+	int current_delta_exp = adapted_delta(i, neighbor_idx_exp, n, sorted_morton_codes);
+
+	while (current_delta_exp > delta_min_val) {
+		l_max <<= 1; // Double search distance
+		neighbor_idx_exp = i + l_max * d;
+		// Check bounds before calling delta
+		if (neighbor_idx_exp < 0 || neighbor_idx_exp >= (int)n) {
+			break; // Stop if index goes out of bounds
+		}
+		current_delta_exp = adapted_delta(i, neighbor_idx_exp, n, sorted_morton_codes);
+	}
+	// l_max is now >= the power of 2 that bounds the search range length
+
+	// Binary search for the precise length 'l' within the range [0, l_max-1]
+	// Find largest 'l' such that delta(i, i + l*d) > delta_min_val
+	unsigned int l = 0;
+
+  for (unsigned int t = l_max >> 1; t > 0; t >>= 1) {
+		int neighbor_idx_bin = i + (l + t) * d;
+
+		// Check bounds before calling delta
+		if (neighbor_idx_bin >= 0 && neighbor_idx_bin < (int)n) {
+			int current_delta_bin = adapted_delta(i, neighbor_idx_bin, n, sorted_morton_codes);
+
+			if (current_delta_bin > delta_min_val) {
+				l += t; // Extend the range, accept this step
+			}
+		}
+	}
+	// 'l' is now the largest offset from 'i' in direction 'd' that satisfies the delta condition
+
+	const int j = i + l * d; // Calculate the index of the other end of the range
+
+
+	// The range of primitives associated with the split at 'i' is [min(i,j), max(i,j)]
+	int2 result_range = (i < j) ? make_int2(i, j) : make_int2(j, i);
+	return result_range;
 }
+
 
 // first and last are indices of primitives in the sorted list
 __device__ __forceinline__ int find_split_adapted(
@@ -183,79 +212,104 @@ __device__ __forceinline__ int find_split_adapted(
   return split_primitive_idx; // Index of the last primitive in the left part of the split
 }
 
-// --- Main Hierarchy Construction Kernel (Updated) ---
-// Constructs internal nodes. Each thread 'internal_node_idx' (0 to N-2) builds d_bvh_nodes[internal_node_idx].
+// --- Main Hierarchy Construction Kernel (Using Refined Child Logic) ---
 __global__ void generate_internal_nodes_karas_kernel(
-  LBVHNode* d_bvh_nodes,                      // Combined array for internal and leaf nodes
-  int* d_parent_indices,                      // Optional: parent_idx[node_global_idx] = parent_node_idx
-  const unsigned int* d_sorted_morton_codes,  // Morton codes sorted
-  unsigned int num_primitives,                // N = number of leaf/primitive nodes
-  int morton_bits)                            // Effective bits in Morton code (passed to delta if needed, though current adapted_delta doesn't use it explicitly for non-equal codes)
+  const int num_lbvh_nodes,
+  LBVHNode* d_bvh_nodes,
+  int* d_parent_indices,
+  const unsigned int* d_sorted_morton_codes,
+  unsigned int num_primitives,
+  int morton_bits)
 {
-  // Current internal node index this thread is responsible for constructing.
-  // Internal nodes are indexed 0 to (num_primitives - 2).
   unsigned int internal_node_idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (internal_node_idx >= num_primitives - 1) return;
 
-  if (internal_node_idx >= num_primitives - 1) return; // There are N-1 internal nodes.
-
-  // Determine the range of *primitives* this internal_node_idx is an ancestor of.
-  // The `internal_node_idx` corresponds to the conceptual split between primitive `internal_node_idx`
-  // and primitive `internal_node_idx+1` in the sorted list.
   const int2 prim_range = determine_range_adapted(d_sorted_morton_codes, num_primitives, internal_node_idx);
 
-  // Determine where to split the primitive range [prim_range.x, prim_range.y].
-  // `split_prim_idx` is the index of the last primitive in the left child's group.
+  // Ensure range is valid before proceeding
+  if (prim_range.x > prim_range.y) {
+       return; // Avoid further execution with bad range
+  }
+
   const int split_prim_idx = find_split_adapted(d_sorted_morton_codes, prim_range.x, prim_range.y, num_primitives);
 
-  // --- Determine children global indices ---
-  // Leaf nodes are in d_bvh_nodes at indices [N-1 ... 2N-2].
-  // The k-th sorted primitive (0-indexed) corresponds to leaf node at global_idx = (N-1) + k.
-  // Internal nodes are in d_bvh_nodes at indices [0 ... N-2].
-  // The internal node representing the split between primitive k and k+1 is at global_idx = k.
+   // Ensure split is valid before proceeding
+  if (split_prim_idx < prim_range.x || split_prim_idx >= prim_range.y) {
+      // split_prim_idx must be within [prim_range.x, prim_range.y - 1]
+       // Handle error? For now, maybe default children to invalid indices or return.
+       // Setting children to an invalid index might be better for debugging later stages.
+       d_bvh_nodes[internal_node_idx].left_child_offset = 0xFFFFFFFF;
+       d_bvh_nodes[internal_node_idx].right_child_offset = 0xFFFFFFFF;
+       d_bvh_nodes[internal_node_idx].num_primitives_in_leaf = 0; // Still mark as internal maybe
+       return;
+  }
+
+  // --- Determine children global indices using Reference's Delta Comparison Logic ---
   unsigned int leaf_node_base_idx = num_primitives - 1;
   unsigned int left_child_global_idx;
   unsigned int right_child_global_idx;
 
-  // Child A (Left) corresponds to primitives [prim_range.x ... split_prim_idx]
-  if (split_prim_idx == prim_range.x) 
-  { // Left child is a single primitive, so it's a leaf
-    left_child_global_idx = leaf_node_base_idx + split_prim_idx;
-  } 
-  else 
-  { // Left child spans multiple primitives, so it's an internal node.
-    // This internal node is the one that represents the split *at the end* of the left sub-range.
-    // The internal node corresponding to the split *after* primitive `k` is node `k`.
-    left_child_global_idx = split_prim_idx;
+  // Calculate delta at the optimal split point 'split_prim_idx' for the range.
+  // This delta is between primitive 'split_prim_idx' and 'split_prim_idx + 1'.
+  int delta_at_split = adapted_delta(split_prim_idx, split_prim_idx + 1, num_primitives, d_sorted_morton_codes);
+
+  // --- Determine Left Child ---
+  if (split_prim_idx == prim_range.x) {
+      left_child_global_idx = leaf_node_base_idx + split_prim_idx; // Range starts == split -> Leaf
+  } else {
+      int delta_left_check = adapted_delta(prim_range.x, split_prim_idx, num_primitives, d_sorted_morton_codes);
+      if (delta_left_check > delta_at_split) {
+          left_child_global_idx = split_prim_idx; // Child is Internal Node 'split_prim_idx'
+      } else {
+          left_child_global_idx = leaf_node_base_idx + prim_range.x; // Child is Leaf Node 'prim_range.x'
+      }
   }
 
-  // Child B (Right) corresponds to primitives [split_prim_idx + 1 ... prim_range.y]
-  if (split_prim_idx + 1 == prim_range.y) 
-  { // Right child is a single primitive, so it's a leaf
-    right_child_global_idx = leaf_node_base_idx + (split_prim_idx + 1);
-  } 
-  else 
-  { // Right child spans multiple primitives, so it's an internal node.
-    // The internal node corresponding to the split *after* primitive `k` is node `k`.
-    // Here, the split for the right child's range effectively starts after `split_prim_idx+1`.
-    // The internal node that would be the root of this right subtree is `split_prim_idx + 1`.
-    right_child_global_idx = split_prim_idx + 1;
+  // --- Determine Right Child ---
+  if (split_prim_idx + 1 == prim_range.y) {
+      right_child_global_idx = leaf_node_base_idx + prim_range.y; // Range end is split+1 -> Leaf
+  } else {
+      int delta_right_check = adapted_delta(split_prim_idx + 1, prim_range.y, num_primitives, d_sorted_morton_codes);
+       if (delta_right_check > delta_at_split) {
+           right_child_global_idx = split_prim_idx + 1; // Child is Internal Node 'split_prim_idx + 1'
+       } else {
+           right_child_global_idx = leaf_node_base_idx + prim_range.y; // Child is Leaf Node 'prim_range.y'
+       }
   }
 
   // --- Store children in d_bvh_nodes[internal_node_idx] ---
-  LBVHNode& current_internal_node = d_bvh_nodes[internal_node_idx];
-  current_internal_node.num_primitives_in_leaf = 0; // Mark as internal node
+  if (internal_node_idx < num_primitives - 1) { // Re-check bounds just in case
+      LBVHNode& current_internal_node = d_bvh_nodes[internal_node_idx];
+      current_internal_node.num_primitives_in_leaf = 0;
+      current_internal_node.left_child_offset = left_child_global_idx;
+      current_internal_node.right_child_offset = right_child_global_idx;
+  } else {
+      return;
+  }
 
-  current_internal_node.left_child_offset = left_child_global_idx;
-  current_internal_node.right_child_offset = right_child_global_idx;
+  // --- Populate the parent indices array ---
+  if (d_parent_indices != nullptr) {
+       // Bounds check before writing parent indices
+      bool parent_write_ok = true;
+      if (left_child_global_idx >= num_lbvh_nodes) {
+           parent_write_ok = false;
+      }
+       if (right_child_global_idx >= num_lbvh_nodes) {
+           parent_write_ok = false;
+       }
 
+      if (parent_write_ok) {
+          // Use atomic operations if there's any chance of race conditions,
+          // but theoretically each child should only have one parent assigned.
+          // Standard write should be okay if logic is correct.
+          d_parent_indices[left_child_global_idx] = internal_node_idx;
+          d_parent_indices[right_child_global_idx] = internal_node_idx;
+      }
 
-  // Populate the parent indices array
-  d_parent_indices[left_child_global_idx] = internal_node_idx;
-  d_parent_indices[right_child_global_idx] = internal_node_idx;
-  
-  if (internal_node_idx == 0) 
-  { // Root node
-    d_parent_indices[internal_node_idx] = -1; // Mark root's parent as invalid/special
+      // Mark root's parent
+      if (internal_node_idx == 0) {
+          d_parent_indices[internal_node_idx] = -1;
+      }
   }
 }
 
@@ -324,6 +378,17 @@ __global__ void set_aabb_kernel_adapted(
   }
 }
 
+__global__ void initialize_visited_counters_kernel(LBVHNode* d_bvh_nodes, int num_internal_nodes) {
+  unsigned int internal_node_idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (internal_node_idx < num_internal_nodes) 
+  {
+    // Internal nodes are indexed 0 to num_internal_nodes-1
+    d_bvh_nodes[internal_node_idx].visited_atomic_counter = 0;
+  }
+}
+
+
 // Main host function to orchestrate the LBVH construction using Karas' algorithm
 void build_lbvh_karas(RawConfig& config, int morton_bits /* = 30 */) 
 {
@@ -343,6 +408,7 @@ void build_lbvh_karas(RawConfig& config, int morton_bits /* = 30 */)
   // Size: config.num_lbvh_nodes, stores the parent index for each node. Root has parent -1 or UINT_MAX.
   int* d_parent_indices = nullptr;
   CUDA_CHECK(cudaMalloc(&d_parent_indices, config.num_lbvh_nodes * sizeof(int)));
+  CUDA_CHECK(cudaMemset(d_parent_indices, 0xFF, config.num_lbvh_nodes * sizeof(int)));
 
   // --- Stage 0: Calculate Morton code and sort primitive accordingly ---
   build_morton_codes_and_sort_primitives(config);
@@ -365,15 +431,25 @@ void build_lbvh_karas(RawConfig& config, int morton_bits /* = 30 */)
   // --- Stage 2: Generate Internal Node Hierarchy (Karas' algorithm) ---
   int grid_dim_internal_hierarchy = (num_internal_nodes - 1) / threads_per_block + 1;
   generate_internal_nodes_karas_kernel<<<grid_dim_internal_hierarchy, threads_per_block>>>(
-      config.d_lbvh_nodes,
-      d_parent_indices,
-      config.d_morton_codes, // Assumed to be sorted
-      N,                     // num_primitives (num_leaf_nodes)
-      morton_bits
+    config.num_lbvh_nodes,
+    config.d_lbvh_nodes,
+    d_parent_indices,
+    config.d_morton_codes, // Assumed to be sorted
+    N,                     // num_primitives (num_leaf_nodes)
+    morton_bits
   );
   CUDA_CHECK(cudaGetLastError());
 
-  // --- Stage 3: Calculate AABBs for all nodes (leaves then bottom-up for internal) ---
+  // --- Stage 3: Initialize Visited Counters for Internal Nodes ---
+  int grid_dim_visited_init = (num_internal_nodes + threads_per_block - 1) / threads_per_block;
+  initialize_visited_counters_kernel<<<grid_dim_visited_init, threads_per_block>>>(
+    config.d_lbvh_nodes,
+    num_internal_nodes // Pass the count of internal nodes
+  );
+
+  CUDA_CHECK(cudaGetLastError());
+
+  // --- Stage 4: Calculate AABBs for all nodes (leaves then bottom-up for internal) ---
   // This kernel processes from leaves up
   int grid_dim_aabb = (num_leaf_nodes - 1) / threads_per_block + 1;
   set_aabb_kernel_adapted<<<grid_dim_aabb, threads_per_block>>>(
@@ -407,5 +483,31 @@ void build_lbvh_karas(RawConfig& config, int morton_bits /* = 30 */)
   CUDA_CHECK(cudaEventDestroy(start_event));
   CUDA_CHECK(cudaEventDestroy(stop_event));
 
-  // printf("LBVH Build (Karas algorithm) complete. Total nodes: %u\n", config.num_lbvh_nodes);
+  printf("LBVH Build (Karas algorithm) complete. Total nodes: %u\n", config.num_lbvh_nodes);
+  // Print leaf node info for debugging
+  if (N <= 16) {
+    LBVHNode* h_lbvh_nodes;
+    CUDA_CHECK(cudaMallocHost(&h_lbvh_nodes, config.num_lbvh_nodes * sizeof(LBVHNode)));
+    CUDA_CHECK(cudaMemcpy(h_lbvh_nodes, config.d_lbvh_nodes, config.num_lbvh_nodes * sizeof(LBVHNode), cudaMemcpyDeviceToHost));
+
+    PrimitiveReference* h_primitive_references;
+    CUDA_CHECK(cudaMallocHost(&h_primitive_references, config.num_total_primitives * sizeof(PrimitiveReference)));
+    CUDA_CHECK(cudaMemcpy(h_primitive_references, config.d_primitive_references, config.num_total_primitives * sizeof(PrimitiveReference), cudaMemcpyDeviceToHost));
+
+    printf("Node Info:\n");
+    for (int i = 0; i < config.num_lbvh_nodes; ++i) {
+      printf("  Node %d: num_primitives_in_leaf=%d, primitive_offset=%d, left_child_offset=%d, right_child_offset=%d, visited_atomic_counter=%u, bbox=(min: %.2f, %.2f, %.2f, max: %.2f, %.2f, %.2f)\n",
+             i,
+             h_lbvh_nodes[i].num_primitives_in_leaf,
+             h_lbvh_nodes[i].primitive_offset,
+             h_lbvh_nodes[i].left_child_offset,
+             h_lbvh_nodes[i].right_child_offset,
+             h_lbvh_nodes[i].visited_atomic_counter,
+             h_lbvh_nodes[i].bbox.x.min, h_lbvh_nodes[i].bbox.y.min, h_lbvh_nodes[i].bbox.z.min,
+             h_lbvh_nodes[i].bbox.x.max, h_lbvh_nodes[i].bbox.y.max, h_lbvh_nodes[i].bbox.z.max);
+    }
+
+    CUDA_CHECK(cudaFreeHost(h_lbvh_nodes));
+    CUDA_CHECK(cudaFreeHost(h_primitive_references));
+  }
 }

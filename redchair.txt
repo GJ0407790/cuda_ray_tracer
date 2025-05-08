@@ -1,8 +1,8 @@
-png 100 100 redchair.png
+png 800 800 redchair.png
 
 expose 2
 
-aa 5
+aa 20
 gi 2
 
 color 1.5 1.5 1.5

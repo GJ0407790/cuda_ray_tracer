@@ -70,17 +70,17 @@ __device__ Sphere::UV Sphere::sphereUV(const point3& point) const {
 	return UV(u,v);
 }
 
-__device__ RGB Sphere::getColor(const point3& point)
+__device__ RGB Sphere::getColor(const point3& point) const
 {
 	return mat.color;
 }
 
-__device__ RGB Triangle::getColor(float b0, float b1, float b2)
+__device__ RGB Triangle::getColor(float b0, float b1, float b2) const
 {
 	return mat.color;
 }
 
-__device__ ObjectInfo Sphere::checkObject(Ray& ray)
+__device__ ObjectInfo Sphere::checkObject(const Ray& ray) const
 {
 	vec3 nor;
 	RGB s_color;
@@ -112,7 +112,7 @@ __device__ ObjectInfo Sphere::checkObject(Ray& ray)
 	return ObjectInfo(t,p,nor,mat); 
 }
 
-__device__ ObjectInfo Triangle::checkObject(Ray& ray)
+__device__ ObjectInfo Triangle::checkObject(const Ray& ray) const
 {
 	point3 intersection_point;
 	RGB t_color;
@@ -120,7 +120,10 @@ __device__ ObjectInfo Triangle::checkObject(Ray& ray)
 	//t is the distance the ray travels toward the triangle
 	float t = dot((p0 - ray.eye),nor) / (dot(ray.dir,nor));
 	
-	if(t <= 1e-6f) return ObjectInfo();
+	if(t <= 1e-6f)
+	{
+		return ObjectInfo();
+	} 
 
 	intersection_point = t * ray.dir + ray.eye;
 	auto barycenter = getBarycentric(*this, intersection_point);

@@ -2,7 +2,7 @@
 #SBATCH --job-name="perf"
 #SBATCH --output="perf.out"
 #SBATCH --error="perf.err"
-#SBATCH --partition=gpuA40x4-interactive
+#SBATCH --partition=gpuA40x4
 #SBATCH --mem=5G
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -23,4 +23,4 @@ INPUT_SCENE="redchair.txt"
 
 # Run the raytracer.
 # srun nsys profile --stats=true ./raytracer "$INPUT_SCENE" > raytracer.out
-srun ncu --set full --launch-skip 0 --launch-count 1 -f -o raytracer ./raytracer "$INPUT_SCENE"
+srun ncu --set full -f -o raytracer ./raytracer "$INPUT_SCENE"

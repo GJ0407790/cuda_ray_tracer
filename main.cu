@@ -64,7 +64,7 @@ int main(int argc, char* argv[]){
 	CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, 64 * 1024));
 	
 	start = std::chrono::high_resolution_clock::now();
-	// render(d_image, host_stl_config.width, host_stl_config.height, host_stl_config.aa, d_raw_config);
+	render(d_image, host_stl_config.width, host_stl_config.height, host_stl_config.aa, d_raw_config);
 	CUDA_CHECK(cudaDeviceSynchronize());
 	end = std::chrono::high_resolution_clock::now();
 	elapsed = end - start;
