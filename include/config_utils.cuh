@@ -2,39 +2,21 @@
 #define CONFIG_UTILS_CUH
 
 #include <cuda_runtime.h>
-
-#include "config.hpp" 
+#include "config.hpp" // Includes the updated StlConfig and RawConfig
 
 // -------------- Host-Side Functions --------------
 
-// 1) Initialize a RawConfig from a StlConfig (on host)
-void initRawConfigFromStl(const StlConfig& host_stl, RawConfig& out_rc);
+// Initializes a host-side RawConfig structure based on a host-side StlConfig.
+// Device pointers in out_rc_host_mirror will be nullptr.
+void initRawConfigFromStl(const StlConfig& host_stl, RawConfig& out_rc_host_mirror);
 
-// 2) Copy all device arrays in RawConfig to device memory
-void copyRawConfigToDevice(RawConfig& rc);
-
-// 3) Recursively deep-copy an Object to device
-Object* deepCopyObjectToDevice(const Object* host_obj);
-
-// 4) Recursively deep-copy a BVH to device
-BVH* copyBVHToDevice(BVH* host_bvh);
+// Allocates device memory and copies data from StlConfig to the device.
+// Fills the device pointer members (d_all_spheres, d_all_suns, etc.) in rc_with_device_ptrs.
+void copyConfigDataToDevice(const StlConfig& host_stl, RawConfig& rc_with_device_ptrs);
 
 // -------------- Freeing Device Memory -------------
 
-// 5) Free the device memory allocated for a BVH subtree
-void freeBVHOnDevice(BVH* d_bvh);
-
-// 6) Free the device memory allocated for an Object
-void freeDeviceObject(Object* d_obj);
-
-// 7) Free all device arrays (and BVH) in RawConfig
-void freeRawConfigDeviceMemory(RawConfig& rc);
-
-// -------------- Freeing Host Memory -------------
-// 8) Free the host memory allocated for a stl conifg
-void freeStlConfig(StlConfig& stl);
-
-void freeObject(Object* obj);
-void freeBvh(BVH* bvh);
+// Frees all device memory pointed to by members of rc_with_device_ptrs.
+void freeRawConfigDeviceMemory(RawConfig& rc_with_device_ptrs);
 
 #endif // CONFIG_UTILS_CUH

@@ -6,6 +6,7 @@
 #include "draw.cuh"
 #include "parse.hpp"
 #include "libpng.h"
+#include "lbvh_builder.cuh"
 
 using std::cout;
 using std::endl;
@@ -32,10 +33,17 @@ int main(int argc, char* argv[]){
 	initRawConfigFromStl(host_stl_config, host_raw_config);
 	
 	// device allocations
-	copyRawConfigToDevice(host_raw_config);
+	copyConfigDataToDevice(host_stl_config, host_raw_config);
 	auto end = std::chrono::high_resolution_clock::now();
 	std::chrono::duration<double> elapsed = end - start;
 	std::cout << "Initialize raw config time: " << elapsed.count() << " seconds" << std::endl;
+
+	CUDA_CHECK(cudaPeekAtLastError());
+
+	// build lvbh tree
+	if (host_raw_config.num_total_primitives > 0) {
+		build_lbvh_karas(host_raw_config, 30); // This allocates and fills raw_config_host_mirror.d_lbvh_nodes
+	}
 
 	CUDA_CHECK(cudaPeekAtLastError());
 	
@@ -56,7 +64,7 @@ int main(int argc, char* argv[]){
 	CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, 64 * 1024));
 	
 	start = std::chrono::high_resolution_clock::now();
-	render(d_image, host_stl_config.width, host_stl_config.height, host_stl_config.aa, d_raw_config);
+	// render(d_image, host_stl_config.width, host_stl_config.height, host_stl_config.aa, d_raw_config);
 	CUDA_CHECK(cudaDeviceSynchronize());
 	end = std::chrono::high_resolution_clock::now();
 	elapsed = end - start;
@@ -72,10 +80,7 @@ int main(int argc, char* argv[]){
 	std::cout << "Transfer to host time: " << elapsed.count() << " seconds" << std::endl;
 
 	std::string output_path = host_stl_config.filename;
-	// img.save(output_path.c_str());
-
-	// free host memory
-	freeStlConfig(host_stl_config);
+	img.save(output_path.c_str());
 
 	// // free gpu memory
 	start = std::chrono::high_resolution_clock::now();

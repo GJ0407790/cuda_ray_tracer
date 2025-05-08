@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <memory>
 
+class RawConfig;
+
 /**
  * @brief Material related variables for objects in the scene.
  * 		  
@@ -53,8 +55,6 @@ public:
 							  normal(normal), mat(mat) {}
 };
 
-class RawConfig;
-
 /**
  * @brief Class Ray, consists of a eye and direction
  */
@@ -69,145 +69,70 @@ public:
 	__device__ Ray(point3 eye, vec3 dir, int bounce): eye(eye), dir(dir.normalize()),bounce(bounce){}
 };
 
-class AABB {
-public:
-	Interval x,y,z;
+// __device__ bool is_intersect(const Ray& r, const AABB& bbox) 
+// {
+// 	const point3& ray_eye = r.eye;
+// 	const vec3&   ray_dir = r.dir;
 
-	__host__ __device__ AABB() {}
+// 	float t_min = float(-INFINITY);
+// 	float t_max = float(INFINITY);
 
-	__host__ __device__ AABB(const Interval& x,const Interval& y,const Interval& z):
-			x(x),y(y),z(z) {}
-	
-	__host__ __device__ AABB(const point3& a, const point3& b) {
-		x = (a.x <= b.x) ? Interval(a.x, b.x) : Interval(b.x, a.x);
-		y = (a.y <= b.y) ? Interval(a.y, b.y) : Interval(b.y, a.y);
-		z = (a.z <= b.z) ? Interval(a.z, b.z) : Interval(b.z, a.z);
-	}
-
-	__host__ __device__ AABB(const point3& a,const point3& b,const point3& c) {		
-		//obtain the min and max value for the three coordinates
-		float x_min = fmin(fmin(a.x, b.x), c.x);
-		float x_max = fmax(fmax(a.x, b.x), c.x);
-
-		float y_min = fmin(fmin(a.y, b.y), c.y);
-		float y_max = fmax(fmax(a.y, b.y), c.y);
-
-		float z_min = fmin(fmin(a.z, b.z), c.z);
-		float z_max = fmax(fmax(a.z, b.z), c.z);
-
-		// Create intervals
-		x = Interval(x_min, x_max);
-		y = Interval(y_min, y_max);
-		z = Interval(z_min, z_max);
+// 	for (int axis = 0; axis < 3; axis++) 
+// 	{
+// 		const Interval& ax = bbox.getAxis(axis);
 		
-		//expand if the interval is too small
-		if(x.size() < 0.01f) x = x.expand(0.01f);
-		if(y.size() < 0.01f) y = y.expand(0.01f);
-		if(z.size() < 0.01f) z = z.expand(0.01f);
-	}
+// 		if (ax.min > ax.max) 
+// 		{
+// 			return false;
+// 		}
 
-	__host__ __device__ AABB(const AABB& a, const AABB& b) 
-	{
-		x = Interval(fmin(a.x.min, b.x.min), fmax(a.x.max, b.x.max));
-		y = Interval(fmin(a.y.min, b.y.min), fmax(a.y.max, b.y.max));
-		z = Interval(fmin(a.z.min, b.z.min), fmax(a.z.max, b.z.max));
-	}
+// 		const float adinv = 1.0f / ray_dir[axis];
 
-	__host__ __device__ const Interval& getAxis(int n) const 
-	{
-		if (n == 0) return x;
-		if (n == 1) return y;
-		return z;
-	}
+// 		float t0 = (ax.min - ray_eye[axis]) * adinv;
+// 		float t1 = (ax.max - ray_eye[axis]) * adinv;
 
-	__host__ __device__ int longestAxis() const 
-	{
-		if (x.size() > y.size())
-			return x.size() > z.size() ? 0 : 2;
-		else
-			return y.size() > z.size() ? 1 : 2;
-	}
+// 		// Manual swap
+// 		if (t0 > t1) {
+// 			float temp = t0;
+// 			t0 = t1;
+// 			t1 = temp;
+// 		}
 
+// 		if (t0 > t_min)
+// 		{
+// 			t_min = t0;
+// 		}
 
-	__host__ __device__ bool hit(const Ray& r) const 
-	{
-		const point3& ray_eye = r.eye;
-    const vec3&   ray_dir = r.dir;
+// 		if (t1 < t_max)
+// 		{
+// 			t_max = t1;
+// 		}
 
-    float t_min = float(-INFINITY);
-    float t_max = float(INFINITY);
+// 		if (t_max <= t_min) 
+// 		{
+// 			return false;
+// 		}
+// 	}
 
-    for (int axis = 0; axis < 3; axis++) 
-		{
-			const Interval& ax = getAxis(axis);
-			
-			if (ax.min > ax.max) 
-			{
-				return false;
-			}
+// 	return true;
+// }
 
-			const float adinv = 1.0f / ray_dir[axis];
-
-			float t0 = (ax.min - ray_eye[axis]) * adinv;
-			float t1 = (ax.max - ray_eye[axis]) * adinv;
-
-			// Manual swap
-			if (t0 > t1) {
-				float temp = t0;
-				t0 = t1;
-				t1 = temp;
-			}
-
-			if (t0 > t_min)
-			{
-				t_min = t0;
-			}
-
-			if (t1 < t_max)
-			{
-				t_max = t1;
-			}
-
-			if (t_max <= t_min) 
-			{
-				return false;
-			}
-    }
-
-    return true;
-	}
+enum class PrimitiveType 
+{
+	SPHERE,
+	TRIANGLE
+	// Add other types if you have them, e.g., MESH_INSTANCE
 };
 
+struct PrimitiveReference 
+{
+	PrimitiveType type;
+	unsigned int id_in_type_array; // Index into d_all_spheres or d_all_triangles
+	// Optional: you might add original scene object ID for debugging, or material ID
+	// unsigned int material_idx;
 
-enum class ObjectType {
-	Sphere,
-	Triangle,
-	BVH,
-	None
-};
-
-/**
- * @brief The object class, both BVH nodes and objects in the scene.
- */
-class Object {
-public:
-	Object() {}
-	
-	Object(ObjectType type, void* ptr)
-	{
-		obj_type = type;
-		obj_ptr = ptr;
-	}
-
-	~Object() {};
-
-	__host__ __device__ AABB getBox() const;
-	__host__ __device__ void setProperties(RGB shine, RGB tran, float ior, float roughness);
-	__device__ ObjectInfo checkObject(Ray& ray);
-
-public:
-	ObjectType obj_type = ObjectType::None;
-	void* obj_ptr = nullptr;
+	__host__ __device__ PrimitiveReference() : type(PrimitiveType::SPHERE), id_in_type_array(0) {} // Default constructor
+	__host__ __device__ PrimitiveReference(PrimitiveType t, unsigned int id) : type(t), id_in_type_array(id) {}
 };
 
 /**
@@ -393,118 +318,6 @@ public:
 		point = point3(x,y,z);
 		color = rgb;
 	}
-};
-
-
-class BVH {
-public:
-	BVH() {}
-
-	BVH(std::vector<Object*>& objs, int start, int end, int axis)
-	{
-		auto comp = (axis == 0) ? box_x_compare
-							: (axis == 1) ? box_y_compare
-														: box_z_compare;
-
-		int span = end - start;
-
-		if(span == 0)
-		{
-			return;
-		}
-		else if(span == 1)
-		{
-			left = objs[start];
-			right = objs[start];
-		}
-		else if(span == 2)
-		{
-			left = objs[start];
-			right = objs[start+1];
-		}
-		else
-		{
-			std::sort(std::begin(objs) + start,std::begin(objs) + end,comp);
-			int mid = start + span/2;
-			BVH* left_bvh = new BVH(objs, start, mid, (axis+1)%3);
-      BVH* right_bvh = new BVH(objs, mid, end, (axis+1)%3);
-
-			left = new Object(ObjectType::BVH, left_bvh);
-			right = new Object(ObjectType::BVH, right_bvh);
-		}
-
-		bbox = AABB(left->getBox(), right->getBox());
-	}
-
-	// need to recursively delete the allocated object
-	~BVH() {}
-    
-	__host__ __device__ AABB getBox() const 
-	{
-		return bbox;
-	}
-
-  __device__ ObjectInfo checkObject(Ray& ray) 
-	{
-		//hit nothing, return nothing
-		bool is_hit = bbox.hit(ray);
-
-		if (!is_hit) 
-		{
-			return ObjectInfo();
-		}
-
-		ObjectInfo leftInfo = left->checkObject(ray);
-		ObjectInfo rightInfo = right->checkObject(ray);
-
-		bool is_left_hit = leftInfo.isHit;
-		bool is_right_hit = rightInfo.isHit;
-
-		if(is_left_hit && !is_right_hit) 
-		{
-			return leftInfo;
-		}
-		else if(!is_left_hit && is_right_hit) 
-		{
-			return rightInfo;
-		}
-		else if(!is_left_hit && !is_right_hit)
-		{
-			return ObjectInfo();
-		}
-		else
-		{
-			if(leftInfo.distance < rightInfo.distance) return leftInfo;
-			else return rightInfo;
-		}
-	}
-
-	static bool box_compare(const Object* a, const Object* b, int axis_index) 
-	{
-		auto a_axis_interval = a->getBox().getAxis(axis_index);
-		auto b_axis_interval = b->getBox().getAxis(axis_index);
-		return a_axis_interval.min < b_axis_interval.min;
-  }
-
-	static bool box_x_compare (const Object* a, const Object* b) 
-	{
-		return box_compare(a, b, 0);
-	}
-
-	static bool box_y_compare (const Object* a, const Object* b) 
-	{
-		return box_compare(a, b, 1);
-	}
-
-	static bool box_z_compare (const Object* a, const Object* b) 
-	{
-		return box_compare(a, b, 2);
-	} 
-   
-public:
-	Object* left = nullptr;
-	Object* right = nullptr;
-	AABB bbox;
 };
 
 #endif

@@ -1,429 +1,147 @@
-// config_utils.cu
-
 #include "config_utils.cuh"
-#include "parse.hpp"  // if needed for parse or stl -> raw config
-#include <cstring>    // for memcpy if needed
-#include <iostream>
+#include <cstring>    // For memcpy if needed
+#include <iostream>   // For error messages
 
-//--------------------------------------
-// 1) initRawConfigFromStl
-//--------------------------------------
-void initRawConfigFromStl(const StlConfig& host_stl, RawConfig& out_rc) {
-	out_rc.width     = host_stl.width;
-	out_rc.height    = host_stl.height;
-	out_rc.color     = host_stl.color;
-	out_rc.bounces   = host_stl.bounces;
-	out_rc.aa        = host_stl.aa;
-	out_rc.dof_focus = host_stl.dof_focus;
-	out_rc.dof_lens  = host_stl.dof_lens;
-	out_rc.forward   = host_stl.forward;
-	out_rc.right     = host_stl.right;
-	out_rc.up        = host_stl.up;
-	out_rc.eye       = host_stl.eye;
-	out_rc.target_up = host_stl.target_up;
-	out_rc.expose    = host_stl.expose;
-	out_rc.fisheye   = host_stl.fisheye;
-	out_rc.panorama  = host_stl.panorama;
-	out_rc.ior       = host_stl.ior;
-	out_rc.rough     = host_stl.rough;
-	out_rc.gi        = host_stl.gi;
-	out_rc.trans     = host_stl.trans;
-	out_rc.shine     = host_stl.shine;
+// Initializes a host-side RawConfig structure based on a host-side StlConfig.
+// Device pointers in out_rc_host_mirror will be nullptr.
+void initRawConfigFromStl(const StlConfig& host_stl, RawConfig& out_rc_host_mirror) {
+	// Copy simple members
+	out_rc_host_mirror.width = host_stl.width;
+	out_rc_host_mirror.height = host_stl.height;
+	out_rc_host_mirror.color = host_stl.color;
+	out_rc_host_mirror.bounces = host_stl.bounces;
+	out_rc_host_mirror.aa = host_stl.aa;
+	out_rc_host_mirror.dof_focus = host_stl.dof_focus;
+	out_rc_host_mirror.dof_lens = host_stl.dof_lens;
+	out_rc_host_mirror.forward = host_stl.forward;
+	out_rc_host_mirror.right = host_stl.right;
+	out_rc_host_mirror.up = host_stl.up;
+	out_rc_host_mirror.eye = host_stl.eye;
+	out_rc_host_mirror.target_up = host_stl.target_up;
+	out_rc_host_mirror.expose = host_stl.expose;
+	out_rc_host_mirror.fisheye = host_stl.fisheye;
+	out_rc_host_mirror.panorama = host_stl.panorama;
+	out_rc_host_mirror.ior = host_stl.ior;
+	out_rc_host_mirror.rough = host_stl.rough;
+	out_rc_host_mirror.gi = host_stl.gi;
+	out_rc_host_mirror.trans = host_stl.trans;
+	out_rc_host_mirror.shine = host_stl.shine;
 
-	// For bvh_head, sun, bulbs, planes, etc., we only store them as host pointers initially
-	// We'll allocate arrays on host, then device. For example:
-	out_rc.num_sun = host_stl.sun.size();
-	if (out_rc.num_sun > 0)
-	{
-		// Allocate a host array of `Sun`
-		Sun** host_array = new Sun*[out_rc.num_sun];
-		// Copy each pointed-to Sun from host_stl.sun[i]
-		for (int i = 0; i < out_rc.num_sun; i++) 
-		{
-			// host_stl.sun[i] is a Sun*,
-			// so we dereference it to get a Sun object
-			host_array[i] = host_stl.sun[i];
-		}
-		out_rc.sun = host_array; // store host pointer
-	}
-	else
-	{
-		out_rc.sun = nullptr;
-	}
-
-	// 2) Bulbs
-	out_rc.num_bulbs = host_stl.bulbs.size();
-	if (out_rc.num_bulbs > 0) 
-	{
-		Bulb** host_array = new Bulb*[out_rc.num_bulbs];
-		for (int i = 0; i < out_rc.num_bulbs; i++)
-		{
-			host_array[i] = host_stl.bulbs[i];
-		}
-		out_rc.bulbs = host_array;
-	}
-	else
-	{
-		out_rc.bulbs = nullptr;
-	}
-
-	// 3) Planes
-	out_rc.num_planes = host_stl.planes.size();
-	if (out_rc.num_planes > 0)
-	{
-		Plane** host_array = new Plane*[out_rc.num_planes];
-		for (int i = 0; i < out_rc.num_planes; i++)
-		{
-			host_array[i] = host_stl.planes[i];
-		}
-		out_rc.planes = host_array;
-	}
-	else
-	{
-		out_rc.planes = nullptr;
-	}
-
-	// same for bulbs, planes, vertices, triangles...
-	// For bvh_head:
-	out_rc.bvh_head = host_stl.bvh_head ? host_stl.bvh_head : nullptr;
-}
-
-//--------------------------------------
-// 2) copyRawConfigToDevice
-//--------------------------------------
-void copyRawConfigToDevice(RawConfig& rc) {
-	if (rc.num_sun > 0 && rc.sun) 
-	{
-		Sun** d_sun_array = nullptr;
-    cudaMalloc(&d_sun_array, rc.num_sun * sizeof(Sun*));
-
-    for (int i = 0; i < rc.num_sun; i++)
-    {
-			Sun* d_sun_obj = nullptr;
-			cudaMalloc(&d_sun_obj, sizeof(Sun));
-			cudaMemcpy(d_sun_obj, rc.sun[i], sizeof(Sun), cudaMemcpyHostToDevice);
-			cudaMemcpy(&d_sun_array[i], &d_sun_obj, sizeof(Sun*), cudaMemcpyHostToDevice);
-    }
-
-    delete[] rc.sun;
-    rc.sun = d_sun_array;
-	}
+	// Initialize counts for SoA data
+	out_rc_host_mirror.num_spheres = host_stl.host_spheres_data.size();
+	out_rc_host_mirror.num_triangles = host_stl.host_triangles_data.size();
+	out_rc_host_mirror.num_total_primitives = host_stl.host_primitive_references.size();
 	
-	if (rc.num_bulbs > 0 && rc.bulbs) 
+	out_rc_host_mirror.scene_min_corner = make_float3(
+		host_stl.scene_bounds_host.x.min,
+		host_stl.scene_bounds_host.y.min,
+		host_stl.scene_bounds_host.z.min
+	);
+	out_rc_host_mirror.scene_max_corner = make_float3(
+		host_stl.scene_bounds_host.x.max,
+		host_stl.scene_bounds_host.y.max,
+		host_stl.scene_bounds_host.z.max
+	);
+
+	out_rc_host_mirror.num_sun = host_stl.sun_data.size();
+	out_rc_host_mirror.num_bulbs = host_stl.bulb_data.size();
+	out_rc_host_mirror.num_planes = host_stl.plane_data.size();
+
+	out_rc_host_mirror.num_lbvh_nodes = 0;
+
+	// Initialize device pointers to nullptr
+	out_rc_host_mirror.d_all_spheres = nullptr;
+	out_rc_host_mirror.d_all_triangles = nullptr;
+	out_rc_host_mirror.d_primitive_references = nullptr;
+	out_rc_host_mirror.d_morton_codes = nullptr;
+
+	out_rc_host_mirror.d_all_suns = nullptr; 
+	out_rc_host_mirror.d_all_bulbs = nullptr; 
+	out_rc_host_mirror.d_all_planes = nullptr;
+
+	out_rc_host_mirror.d_lbvh_nodes = nullptr;
+}
+
+// Allocates device memory and copies data from StlConfig to the device.
+// Fills the device pointer members (d_all_spheres, sun (as d_all_suns), etc.) in rc_with_device_ptrs.
+void copyConfigDataToDevice(const StlConfig& host_stl, RawConfig& rc_with_device_ptrs) {
+	// --- Copy SoA Primitive Data ---
+	if (rc_with_device_ptrs.num_spheres > 0) 
 	{
-		Bulb** d_bulb_array = nullptr;
-    cudaMalloc(&d_bulb_array, rc.num_bulbs * sizeof(Bulb*));
-
-    for (int i = 0; i < rc.num_bulbs; i++)
-    {
-			Bulb* d_bulb_obj = nullptr;
-			cudaMalloc(&d_bulb_obj, sizeof(Bulb));
-			cudaMemcpy(d_bulb_obj, rc.bulbs[i], sizeof(Bulb), cudaMemcpyHostToDevice);
-			cudaMemcpy(&d_bulb_array[i], &d_bulb_obj, sizeof(Bulb*), cudaMemcpyHostToDevice);
-    }
-
-    delete[] rc.bulbs;
-    rc.bulbs = d_bulb_array;
+		cudaError_t err = cudaMalloc(&rc_with_device_ptrs.d_all_spheres, rc_with_device_ptrs.num_spheres * sizeof(Sphere));
+		if (err != cudaSuccess) { std::cerr << "CUDA Malloc failed for d_all_spheres: " << cudaGetErrorString(err) << std::endl; return; }
+		err = cudaMemcpy(rc_with_device_ptrs.d_all_spheres, host_stl.host_spheres_data.data(), rc_with_device_ptrs.num_spheres * sizeof(Sphere), cudaMemcpyHostToDevice);
+		if (err != cudaSuccess) { std::cerr << "CUDA Memcpy failed for d_all_spheres: " << cudaGetErrorString(err) << std::endl; return; }
 	}
 
-	if (rc.num_planes > 0 && rc.planes) 
+	if (rc_with_device_ptrs.num_triangles > 0) 
 	{
-		Plane** d_plane_array = nullptr;
-    cudaMalloc(&d_plane_array, rc.num_planes * sizeof(Plane*));
-
-    for (int i = 0; i < rc.num_planes; i++)
-    {
-			Plane* d_plane_obj = nullptr;
-			cudaMalloc(&d_plane_obj, sizeof(Plane));
-			cudaMemcpy(d_plane_obj, rc.planes[i], sizeof(Plane), cudaMemcpyHostToDevice);
-			cudaMemcpy(&d_plane_array[i], &d_plane_obj, sizeof(Plane*), cudaMemcpyHostToDevice);
-    }
-
-    delete[] rc.planes;
-    rc.planes = d_plane_array;
+		cudaError_t err = cudaMalloc(&rc_with_device_ptrs.d_all_triangles, rc_with_device_ptrs.num_triangles * sizeof(Triangle));
+		if (err != cudaSuccess) { std::cerr << "CUDA Malloc failed for d_all_triangles: " << cudaGetErrorString(err) << std::endl; return; }
+		err = cudaMemcpy(rc_with_device_ptrs.d_all_triangles, host_stl.host_triangles_data.data(), rc_with_device_ptrs.num_triangles * sizeof(Triangle), cudaMemcpyHostToDevice);
+		if (err != cudaSuccess) { std::cerr << "CUDA Memcpy failed for d_all_triangles: " << cudaGetErrorString(err) << std::endl; return; }
 	}
 
-	// bvh_head
-	if (rc.bvh_head) 
+	if (rc_with_device_ptrs.num_total_primitives > 0) 
 	{
-		rc.bvh_head = deepCopyObjectToDevice(rc.bvh_head);
+		std::cout << "Number of total primitives: " << rc_with_device_ptrs.num_total_primitives << std::endl;
+		cudaError_t err = cudaMalloc(&rc_with_device_ptrs.d_primitive_references, rc_with_device_ptrs.num_total_primitives * sizeof(PrimitiveReference));
+		if (err != cudaSuccess) { std::cerr << "CUDA Malloc failed for d_primitive_references: " << cudaGetErrorString(err) << std::endl; return; }
+		err = cudaMemcpy(rc_with_device_ptrs.d_primitive_references, host_stl.host_primitive_references.data(), rc_with_device_ptrs.num_total_primitives * sizeof(PrimitiveReference), cudaMemcpyHostToDevice);
+		if (err != cudaSuccess) { std::cerr << "CUDA Memcpy failed for d_primitive_references: " << cudaGetErrorString(err) << std::endl; return; }
+
+		err = cudaMalloc(&rc_with_device_ptrs.d_morton_codes, rc_with_device_ptrs.num_total_primitives * sizeof(unsigned int));
+		if (err != cudaSuccess) { std::cerr << "CUDA Malloc failed for d_morton_codes: " << cudaGetErrorString(err) << std::endl; return; }
+		// Morton codes are generated on device, so no cudaMemcpy for their content here.
+	}
+
+	// --- Copy SoA Lights, Planes, etc.
+	if (rc_with_device_ptrs.num_sun > 0) 
+	{
+		cudaError_t err = cudaMalloc(&rc_with_device_ptrs.d_all_suns, rc_with_device_ptrs.num_sun * sizeof(Sun)); // Assuming RawConfig.sun is Sun*
+		if (err != cudaSuccess) { std::cerr << "CUDA Malloc failed for sun data: " << cudaGetErrorString(err) << std::endl; return; }
+		err = cudaMemcpy(rc_with_device_ptrs.d_all_suns, host_stl.sun_data.data(), rc_with_device_ptrs.num_sun * sizeof(Sun), cudaMemcpyHostToDevice);
+		if (err != cudaSuccess) { std::cerr << "CUDA Memcpy failed for sun data: " << cudaGetErrorString(err) << std::endl; return; }
+	}
+
+	if (rc_with_device_ptrs.num_bulbs > 0) 
+	{
+		cudaError_t err = cudaMalloc(&rc_with_device_ptrs.d_all_bulbs, rc_with_device_ptrs.num_bulbs * sizeof(Bulb)); // Assuming RawConfig.bulbs is Bulb*
+		if (err != cudaSuccess) { std::cerr << "CUDA Malloc failed for bulb data: " << cudaGetErrorString(err) << std::endl; return; }
+		err = cudaMemcpy(rc_with_device_ptrs.d_all_bulbs, host_stl.bulb_data.data(), rc_with_device_ptrs.num_bulbs * sizeof(Bulb), cudaMemcpyHostToDevice);
+		if (err != cudaSuccess) { std::cerr << "CUDA Memcpy failed for bulb data: " << cudaGetErrorString(err) << std::endl; return; }
+	}
+
+	if (rc_with_device_ptrs.num_planes > 0) 
+	{
+		cudaError_t err = cudaMalloc(&rc_with_device_ptrs.d_all_planes, rc_with_device_ptrs.num_planes * sizeof(Plane)); // Assuming RawConfig.planes is Plane*
+		if (err != cudaSuccess) { std::cerr << "CUDA Malloc failed for plane data: " << cudaGetErrorString(err) << std::endl; return; }
+		err = cudaMemcpy(rc_with_device_ptrs.d_all_planes, host_stl.plane_data.data(), rc_with_device_ptrs.num_planes * sizeof(Plane), cudaMemcpyHostToDevice);
+		if (err != cudaSuccess) { std::cerr << "CUDA Memcpy failed for plane data: " << cudaGetErrorString(err) << std::endl; return; }
 	}
 }
 
-//--------------------------------------
-// 3) deepCopyObjectToDevice
-//--------------------------------------
-Object* deepCopyObjectToDevice(const Object* host_obj) 
-{
-	if (!host_obj) return nullptr;
+// Frees all device memory pointed to by members of rc_with_device_ptrs.
+void freeRawConfigDeviceMemory(RawConfig& rc_with_device_ptrs) {
+	cudaFree(rc_with_device_ptrs.d_all_spheres);
+	rc_with_device_ptrs.d_all_spheres = nullptr;
+	cudaFree(rc_with_device_ptrs.d_all_triangles);
+	rc_with_device_ptrs.d_all_triangles = nullptr;
+	cudaFree(rc_with_device_ptrs.d_primitive_references);
+	rc_with_device_ptrs.d_primitive_references = nullptr;
+	cudaFree(rc_with_device_ptrs.d_morton_codes);
+	rc_with_device_ptrs.d_morton_codes = nullptr;
 
-	void* d_inner = nullptr;
-	switch (host_obj->obj_type)
-  {
-		case ObjectType::Sphere: 
-		{
-			cudaMalloc(&d_inner, sizeof(Sphere));
-			cudaMemcpy(d_inner, static_cast<Sphere*>(host_obj->obj_ptr), sizeof(Sphere), cudaMemcpyHostToDevice);
-			break;
-		}
-		case ObjectType::Triangle: 
-		{
-			cudaMalloc(&d_inner, sizeof(Triangle));
-			cudaMemcpy(d_inner, static_cast<Triangle*>(host_obj->obj_ptr), sizeof(Triangle), cudaMemcpyHostToDevice);
-			break;
-		}
-		case ObjectType::BVH: 
-		{
-			// recursively copy BVH
-			d_inner = copyBVHToDevice(static_cast<BVH*>(host_obj->obj_ptr));
-			break;
-		}
-		default:
-			return nullptr;
-	}
+	// Free SoA Lights, Planes, etc.
+	cudaFree(rc_with_device_ptrs.d_all_suns);
+	rc_with_device_ptrs.d_all_suns = nullptr;
+	cudaFree(rc_with_device_ptrs.d_all_bulbs);
+	rc_with_device_ptrs.d_all_bulbs = nullptr;
+	cudaFree(rc_with_device_ptrs.d_all_planes);
+	rc_with_device_ptrs.d_all_planes = nullptr;
 
-	// 2) Create a device-side Object wrapper
-	Object h_obj(host_obj->obj_type, d_inner);
-	Object* d_obj = nullptr;
-
-	cudaMalloc(&d_obj, sizeof(Object));
-	cudaMemcpy(d_obj, &h_obj, sizeof(Object), cudaMemcpyHostToDevice);
-
-	return d_obj;
+	// For LBVH
+	cudaFree(rc_with_device_ptrs.d_lbvh_nodes);
+	rc_with_device_ptrs.d_lbvh_nodes = nullptr;
 }
 
-//--------------------------------------
-// 4) copyBVHToDevice
-//--------------------------------------
-BVH* copyBVHToDevice(BVH* host_bvh) 
-{
-	if (!host_bvh) return nullptr;
-
-	BVH* d_bvh = nullptr;
-	cudaMalloc(&d_bvh, sizeof(BVH));
-
-	// Copy node from device->host so we can fix up pointers
-	BVH temp = *host_bvh;
-
-	// Recursively copy left child
-	if (temp.left) 
-	{
-		Object* d_left = deepCopyObjectToDevice(temp.left);
-		temp.left = d_left;
-	}
-
-	// Right child
-	if (temp.right) 
-	{
-		Object* d_right = deepCopyObjectToDevice(temp.right);
-		temp.right = d_right;
-	}
-
-	cudaMemcpy(d_bvh, &temp, sizeof(BVH), cudaMemcpyHostToDevice);
-	return d_bvh;
-}
-
-//--------------------------------------
-// 5) freeBVHOnDevice
-//--------------------------------------
-void freeBVHOnDevice(BVH* d_bvh) 
-{
-	if (!d_bvh) return;
-
-	// Copy to host to read left/right pointers
-	BVH h_bvh;
-	cudaMemcpy(&h_bvh, d_bvh, sizeof(BVH), cudaMemcpyDeviceToHost);
-
-	if (h_bvh.left) 
-	{
-		freeDeviceObject(h_bvh.left);
-	}
-
-	if (h_bvh.right) 
-	{
-		freeDeviceObject(h_bvh.right);
-	}
-
-	cudaFree(d_bvh);
-}
-
-//--------------------------------------
-// 6) freeDeviceObject
-//--------------------------------------
-void freeDeviceObject(Object* d_obj) 
-{
-	if (!d_obj) return;
-
-	Object h_obj;
-	cudaMemcpy(&h_obj, d_obj, sizeof(Object), cudaMemcpyDeviceToHost);
-
-	switch (h_obj.obj_type) 
-	{
-		case ObjectType::Sphere:
-		case ObjectType::Triangle:
-			// free the underlying
-			if (h_obj.obj_ptr) 
-			{
-				cudaFree(h_obj.obj_ptr);
-			}
-			break;
-		case ObjectType::BVH:
-			freeBVHOnDevice(static_cast<BVH*>(h_obj.obj_ptr));
-			break;
-		default:
-			break;
-	}
-	cudaFree(d_obj);
-}
-
-//--------------------------------------
-// 7) freeRawConfigDeviceMemory
-//--------------------------------------
-void freeRawConfigDeviceMemory(RawConfig& rc) 
-{
-	// Free sun
-	if (rc.sun && rc.num_sun > 0) 
-	{
-		Sun** h_sun = new Sun*[rc.num_sun];
-		cudaMemcpy(h_sun, rc.sun, rc.num_sun * sizeof(Sun*), cudaMemcpyDeviceToHost);
-		
-		for (int i = 0; i < rc.num_sun; ++i) 
-		{
-			cudaFree(h_sun[i]);
-		}
-
-		delete[] h_sun;
-		cudaFree(rc.sun);
-		rc.sun = nullptr;
-	}
-
-	// Free bulbs
-	if (rc.bulbs && rc.num_bulbs > 0) 
-	{
-		Bulb** h_bulbs = new Bulb*[rc.num_bulbs];
-		cudaMemcpy(h_bulbs, rc.bulbs, rc.num_bulbs * sizeof(Bulb*), cudaMemcpyDeviceToHost);
-		
-		for (int i = 0; i < rc.num_bulbs; ++i) 
-		{
-			cudaFree(h_bulbs[i]);
-		}
-
-		delete[] h_bulbs;
-		cudaFree(rc.bulbs);
-		rc.bulbs = nullptr;
-	}
-
-	// Free planes
-	if (rc.planes && rc.num_planes > 0) 
-	{
-		Plane** h_planes = new Plane*[rc.num_planes];
-		cudaMemcpy(h_planes, rc.planes, rc.num_planes * sizeof(Plane*), cudaMemcpyDeviceToHost);
-		
-		for (int i = 0; i < rc.num_planes; ++i) 
-		{
-			cudaFree(h_planes[i]);
-		}
-
-		delete[] h_planes;
-		cudaFree(rc.planes);
-		rc.planes = nullptr;
-	}
-
-	// Free BVH head — this is still tricky due to tree structure
-	if (rc.bvh_head) 
-	{
-		freeDeviceObject(rc.bvh_head);
-		rc.bvh_head = nullptr;
-	}
-}
-
-void freeStlConfig(StlConfig& stl) 
-{
-	// Free the BVH head pointer if it exists
-	if (stl.bvh_head) 
-	{
-		freeObject(stl.bvh_head); 
-		stl.bvh_head = nullptr;
-	}
-
-	for (auto obj : stl.objects) 
-	{
-		if (obj) 
-		{
-			freeObject(obj);
-		}
-	}
-	stl.objects.clear();
-
-	for (auto sun : stl.sun)
-	{
-		if (sun)
-		{
-			delete sun;
-		}
-	}
-	stl.sun.clear();
-
-	for (auto bulb : stl.bulbs)
-	{
-		if (bulb)
-		{
-			delete bulb;
-		}
-	}
-	stl.bulbs.clear();
-
-	for (auto plane : stl.planes)
-	{
-		if (plane)
-		{
-			delete plane;
-		}
-	}
-	stl.planes.clear();
-
-	for (auto v : stl.vertices)
-	{
-		if (v)
-		{
-			delete v;
-		}
-	}
-	stl.vertices.clear();
-}
-
-void freeObject(Object* obj) 
-{
-	if (obj->obj_ptr) 
-	{
-		switch (obj->obj_type) 
-		{
-			case ObjectType::Sphere:
-				delete static_cast<Sphere*>(obj->obj_ptr);
-				break;
-			case ObjectType::Triangle:
-				delete static_cast<Triangle*>(obj->obj_ptr);
-				break;
-			case ObjectType::BVH:
-				freeBvh(static_cast<BVH*>(obj->obj_ptr));
-				break;
-			default:
-				break;
-		}
-	}
-
-	delete obj;
-}
-
-void freeBvh(BVH* bvh) 
-{
-	if (bvh->left && bvh->left->obj_type == ObjectType::BVH)
-	{
-		freeObject(bvh->left);
-	}
-	
-	if (bvh->right && bvh->right->obj_type == ObjectType::BVH)
-	{
-		freeObject(bvh->right);
-	}
-}

@@ -99,13 +99,14 @@ __device__ RGBA shootPrimaryRay(float x, float y, curandState* state, RawConfig*
  */
 __device__ ObjectInfo hitNearest(Ray& ray, RawConfig* config)
 {
-	if(ray.bounce == 0) return ObjectInfo();
+	return ObjectInfo();
+	// if(ray.bounce == 0) return ObjectInfo();
 
-	auto object_tuple = config->bvh_head->checkObject(ray);
-	auto plane_tuple = checkPlane(ray, false, config);
-	auto closest_object = unpackIntersection(object_tuple, plane_tuple);
+	// auto object_tuple = config->bvh_head->checkObject(ray);
+	// auto plane_tuple = checkPlane(ray, false, config);
+	// auto closest_object = unpackIntersection(object_tuple, plane_tuple);
 	
-	return closest_object;
+	// return closest_object;
 }
 
 /**
@@ -132,9 +133,9 @@ __device__ RGBA diffuseLight(const ObjectInfo& obj, curandState* state, RawConfi
 
 	for(int i = 0; i < config->num_sun; i++)
 	{
-		auto light = config->sun[i];
+		const auto& light = config->d_all_suns[i];
 		//Create a shadow ray, check if path blocked
-		Ray shadow_ray(obj.i_point + obj.normal*EPSILON, light->dir,1);
+		Ray shadow_ray(obj.i_point + obj.normal*EPSILON, light.dir,1);
 		auto sunInfo = hitNearest(shadow_ray, config);
 
 		if(sunInfo.isHit)
@@ -142,15 +143,15 @@ __device__ RGBA diffuseLight(const ObjectInfo& obj, curandState* state, RawConfi
 			continue;
 		} 
 		
-		float lambert = fmax(dot(normal, light->dir.normalize()), 0.0f);
-		color = color + getColorSun(lambert, obj.mat.color, light->color, config);
+		float lambert = fmax(dot(normal, light.dir.normalize()), 0.0f);
+		color = color + getColorSun(lambert, obj.mat.color, light.color, config);
 	}
 	
 	//iterate over all point lights(bulbs)
 	for(int i = 0; i < config->num_bulbs; i++){
-		auto light = config->bulbs[i];
+		const auto& light = config->d_all_bulbs[i];
 		//Create a shadow ray, check if path blocked
-		vec3 bulbDir = (light->point - obj.i_point);
+		vec3 bulbDir = (light.point - obj.i_point);
 		Ray shadow_ray(obj.i_point + obj.normal * EPSILON, bulbDir, 1);
 
 		auto bulbInfo = hitNearest(shadow_ray, config);
@@ -161,7 +162,7 @@ __device__ RGBA diffuseLight(const ObjectInfo& obj, curandState* state, RawConfi
 		}
 
 		float lambert = fmax(dot(normal,bulbDir.normalize()), 0.0f);
-		color = color + getColorBulb(lambert, obj.mat.color, light->color,bulbDir.length(), config);
+		color = color + getColorBulb(lambert, obj.mat.color, light.color,bulbDir.length(), config);
 	}
 
 	return color;
@@ -377,9 +378,9 @@ __device__ ObjectInfo checkPlane(Ray& ray, bool exit_early, RawConfig* config){
 
 	for(int i = 0; i < config->num_planes; i++)
 	{
-		Plane* plane = config->planes[i];
+		const auto& plane = config->d_all_planes[i];
 
-		float t = dot((plane->point - ray.eye), plane->nor) / (dot(ray.dir, plane->nor));
+		float t = dot((plane.point - ray.eye), plane.nor) / (dot(ray.dir, plane.nor));
 		
 		if(t <= 1e-6f)
 		{
@@ -392,8 +393,8 @@ __device__ ObjectInfo checkPlane(Ray& ray, bool exit_early, RawConfig* config){
 		{
 			t_sol = t;
 			p_sol = intersection_point;
-			nor = (dot(plane->nor, ray.dir) < 0.0f) ? plane->nor : -plane->nor;
-			mats = plane->mat;
+			nor = (dot(plane.nor, ray.dir) < 0.0f) ? plane.nor : -plane.nor;
+			mats = plane.mat;
 		}
 	}
 

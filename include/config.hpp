@@ -6,23 +6,27 @@
 #include <memory>
 #include <vector>
 
-#include "struct.cuh"
-#include "object.cuh"
+#include "object.cuh" // For AABB, Sphere, Triangle, PrimitiveReference, etc.
+#include "lbvh.cuh"
 #include "vec3.cuh"
 
-class Object;
+// Forward declarations (if Object class is not fully defined yet or for BVHNode later)
 class Sun;
 class Bulb;
 class Plane;
 class Vertex;
+class Triangle;
+class Sphere;
+struct PrimitiveReference;
+struct LBVHNode;
 
-class StlConfig 
+class StlConfig
 {
 public:
-	StlConfig() : 
+  StlConfig() :
     forward(0.0, 0.0, -1.0), right(1.0, 0.0, 0.0),
-    up(0.0, 1.0, 0.0), eye{0.0, 0.0, 0.0}, target_up(0.0, 1.0, 0.0) 
-    {}
+    up(0.0, 1.0, 0.0), eye{0.0, 0.0, 0.0}, target_up(0.0, 1.0, 0.0)
+  {}
 
 public:
   int width = 0;
@@ -50,15 +54,21 @@ public:
   RGB trans;
   RGB shine;
 
-  std::vector<Object*> objects;
-  Object* bvh_head = nullptr;
-  std::vector<Sun*> sun;
-  std::vector<Bulb*> bulbs;
-  std::vector<Plane*> planes;
-  std::vector<Vertex*> vertices;
+  // Host-side storage for parsed objects
+
+  // Host-side SoA data and primitive references (populated from 'objects')
+  std::vector<Sphere> host_spheres_data;
+  std::vector<Triangle> host_triangles_data;
+  std::vector<PrimitiveReference> host_primitive_references;
+  AABB scene_bounds_host; // Calculated on host after parsing
+
+  std::vector<Sun> sun_data;
+  std::vector<Bulb> bulb_data;
+  std::vector<Plane> plane_data;
+  std::vector<Vertex> vertex_data; // Used during parsing then can be cleared
 };
 
-// Same as Config but without STL containers
+// Same as Config but without STL containers and for device
 struct RawConfig {
   int width;
   int height;
@@ -78,20 +88,39 @@ struct RawConfig {
   bool fisheye;
   bool panorama;
 
-  float ior;
+  float ior;    // These might become per-primitive if materials are complex
   float rough;
   int gi;
   RGB trans;
   RGB shine;
 
-  // Pointers to device memory
-  Object* bvh_head;
+  // Device pointers for SoA primitive data
+  Sphere* d_all_spheres;
+  int num_spheres;
+  Triangle* d_all_triangles;
+  int num_triangles;
+
+  // Device array for primitive references (this one gets sorted by Morton code)
+  PrimitiveReference* d_primitive_references;
+  // Device array for Morton codes (sorted along with d_primitive_references)
+  unsigned int* d_morton_codes;
+  int num_total_primitives; // num_spheres + num_triangles
+
+  float3 scene_min_corner;
+  float3 scene_max_corner;
+
+  // --- LBVH Data ---
+  LBVHNode* d_lbvh_nodes;
+  int num_lbvh_nodes; // Total nodes in the BVH (2 * num_leaf_nodes - 1, or similar)
+
+
+  // Pointers to device memory for lights, planes etc. (as before)
   int num_sun;
-  Sun** sun;
+  Sun* d_all_suns;
   int num_bulbs;
-  Bulb** bulbs;
+  Bulb* d_all_bulbs;
   int num_planes;
-  Plane** planes;
+  Plane* d_all_planes;
 };
 
 #endif // CONFIG_HPP

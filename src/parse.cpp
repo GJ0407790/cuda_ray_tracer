@@ -25,20 +25,20 @@ void parseInput(char* argv[], StlConfig& config)
 	}
 
 	//read line by line
+	AABB running_scene_bounds;
 	string line;
 	while(getline(input,line)){
 		std::stringstream ss(line);
 		std::vector<std::string> words;
 		string word;
 		while (ss >> word) words.push_back(word);
-		parseLine(words, config);
+		parseLine(words, config, running_scene_bounds);
 	}
 
-	BVH* bvh_head = new BVH(config.objects, 0, config.objects.size(), 0);
-	config.bvh_head = new Object(ObjectType::BVH, bvh_head);
+
 }
 
-void parseLine(std::vector<std::string> words, StlConfig& config)
+void parseLine(std::vector<std::string> words, StlConfig& config, AABB& running_scene_bounds)
 {
 	//return on empty line
 	if(words.empty()) return;
@@ -129,62 +129,77 @@ void parseLine(std::vector<std::string> words, StlConfig& config)
 	/*----------------*/
 	else if(words[0] == "sphere" && words.size() == 5){
 		float x,y,z,r;
-		Sphere* s;
 
 		x = stof(words[1]);y = stof(words[2]);
 		z = stof(words[3]);r = stof(words[4]);
-		s = new Sphere(x,y,z,r,config.color);
 
-		s->setProperties(config.shine, config.trans, config.ior, config.rough);
-		
-		auto obj = new Object(ObjectType::Sphere, s);
-		config.objects.push_back(obj);
+		config.host_spheres_data.emplace_back(x, y, z, r, config.color);
+		config.host_spheres_data.back().setProperties(config.shine, config.trans, config.ior, config.rough);
+
+		config.host_primitive_references.emplace_back(PrimitiveType::SPHERE, config.host_spheres_data.size() - 1);
+
+		const auto& prim_bbox = config.host_spheres_data.back().bbox;
+
+		running_scene_bounds.x.min = fminf(running_scene_bounds.x.min, prim_bbox.x.min);
+		running_scene_bounds.x.max = fmaxf(running_scene_bounds.x.max, prim_bbox.x.max);
+		running_scene_bounds.y.min = fminf(running_scene_bounds.y.min, prim_bbox.y.min);
+		running_scene_bounds.y.max = fmaxf(running_scene_bounds.y.max, prim_bbox.y.max);
+		running_scene_bounds.z.min = fminf(running_scene_bounds.z.min, prim_bbox.z.min);
+		running_scene_bounds.z.max = fmaxf(running_scene_bounds.z.max, prim_bbox.z.max);
 	}
 	else if(words[0] == "plane" && words.size() == 5){
 		float a,b,c,d;
 		a = stof(words[1]);b = stof(words[2]);
 		c = stof(words[3]);d = stof(words[4]);
-		Plane* p = new Plane(a,b,c,d,config.color);
-		p->setProperties(config.shine,config.trans,config.ior,config.rough);
-		config.planes.push_back(p);
+
+		config.plane_data.emplace_back(a,b,c,d,config.color);
+		config.plane_data.back().setProperties(config.shine,config.trans,config.ior,config.rough);
 	}
 	/*Vertices*/
 	else if(words[0] == "xyz" && words.size() == 4){
 		float x,y,z;
 		x = stof(words[1]);y = stof(words[2]);
 		z = stof(words[3]);
-		Vertex* vert = new Vertex(x,y,z);
-		config.vertices.push_back(vert);
+
+		config.vertex_data.emplace_back(x,y,z);
 	}
 	/*Triangle index*/
 	else if(words[0] == "tri" && words.size() == 4){
 		float i,j,k;
-		int size = config.vertices.size();
+		int size = config.vertex_data.size();
 		Triangle* t;
 		i = (stoi(words[1]) > 0) ? stoi(words[1]) - 1 : size + stoi(words[1]);
 		j = (stoi(words[2]) > 0) ? stoi(words[2]) - 1 : size + stoi(words[2]);
 		k = (stoi(words[3]) > 0) ? stoi(words[3]) - 1 : size + stoi(words[3]);
 
-		t = new Triangle(*config.vertices[i], *config.vertices[j], *config.vertices[k], config.color);
-		t->setProperties(config.shine,config.trans,config.ior,config.rough); 
-		
-		auto obj = new Object(ObjectType::Triangle, t);
-		config.objects.push_back(obj);
+		config.host_triangles_data.emplace_back(config.vertex_data[i], config.vertex_data[j], config.vertex_data[k], config.color);
+		config.host_triangles_data.back().setProperties(config.shine,config.trans,config.ior,config.rough); 
+
+		config.host_primitive_references.emplace_back(PrimitiveType::TRIANGLE, config.host_triangles_data.size() - 1);
+
+		const auto& prim_bbox = config.host_triangles_data.back().bbox;
+
+		running_scene_bounds.x.min = fminf(running_scene_bounds.x.min, prim_bbox.x.min);
+		running_scene_bounds.x.max = fmaxf(running_scene_bounds.x.max, prim_bbox.x.max);
+		running_scene_bounds.y.min = fminf(running_scene_bounds.y.min, prim_bbox.y.min);
+		running_scene_bounds.y.max = fmaxf(running_scene_bounds.y.max, prim_bbox.y.max);
+		running_scene_bounds.z.min = fminf(running_scene_bounds.z.min, prim_bbox.z.min);
+		running_scene_bounds.z.max = fmaxf(running_scene_bounds.z.max, prim_bbox.z.max);
 	}
 	else if(words[0] == "sun" && words.size() == 4){
 		float x,y,z;
 		x = stof(words[1]);y = stof(words[2]);
 		z = stof(words[3]);
-		Sun* s = new Sun(x,y,z,config.color);
-		config.sun.push_back(s);
+		
+		config.sun_data.emplace_back(x,y,z,config.color);
 	}
 	/*Light bulb, a point of light in the scene*/
 	else if(words[0] == "bulb" && words.size() == 4){
 		float x,y,z;
 		x = stof(words[1]);y = stof(words[2]);
 		z = stof(words[3]);
-		Bulb* b = new Bulb(x,y,z,config.color);
-		config.bulbs.push_back(b);
+
+		config.bulb_data.emplace_back(x,y,z,config.color);
 	}
 	/*Fail case*/
 	else{

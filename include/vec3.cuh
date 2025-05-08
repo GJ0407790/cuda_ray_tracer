@@ -106,5 +106,4 @@ __host__ __device__ inline vec3 cross(const vec3& a, const vec3& b)
 	);
 }
 
-
 #endif
