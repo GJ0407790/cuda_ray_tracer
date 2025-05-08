@@ -6,6 +6,10 @@
 
 #define EPSILON 0.001f
 
+__device__ unsigned char floatToUcharWarp(float f) { 
+	return (unsigned char)(fminf(fmaxf(f, 0.0f), 1.0f) * 255.0f + 0.5f);
+}
+
 __global__ void finalize_kernel(pixel_t* d_image, const float4* d_accum_buffer, const int img_width, const int img_height, const int aa) 
 {
 	// Use standard 1D grid-stride loop or simple index calculation
@@ -128,6 +132,86 @@ __global__ void render_kernel(pixel_t* d_image, const int img_width, const int i
 	d_image[h * img_width + w].a = rgba.a * 255;
 }
 
+__global__ void render_kernel_warp_aa(pixel_t* d_image, const int img_width, const int img_height, RawConfig* config)
+{
+	// Constants for warp operations
+	const unsigned int WARP_SIZE = 32;
+	const unsigned int FULL_WARP_MASK = 0xFFFFFFFF; 
+
+	// Calculate global thread ID (sample ID)
+	const int tid = blockDim.x * blockIdx.x + threadIdx.x;
+	
+	// Determine the pixel index this thread's warp is working on
+	const int pixel_idx = tid / WARP_SIZE; 
+
+	// Check if pixel index is out of bounds
+	const int total_pixels = img_width * img_height;
+	if (pixel_idx >= total_pixels) {
+		return;
+	}
+
+	// Determine thread's lane ID within its warp (0-31)
+	const int lane_id = tid % WARP_SIZE; // == threadIdx.x % WARP_SIZE
+
+	// Calculate pixel coordinates (w, h)
+	const int w = pixel_idx % img_width; 
+	const int h = pixel_idx / img_width; 
+
+	// Setup unique RNG state for this sample thread
+	curandState state;
+	curand_init(1234 + pixel_idx, lane_id, 0, &state); // Seed based on pixel and lane
+
+	// Generate jittered coordinates 
+	float jitter_x = randD(-0.5f, 0.5f, &state);
+	float jitter_y = randD(-0.5f, 0.5f, &state);
+	float sample_w = (float)w + jitter_x;
+	float sample_h = (float)h + jitter_y;
+
+	// Shoot one primary ray for this sample
+	RGBA rgba_sample = shootPrimaryRay(sample_w, sample_h, &state, config);
+	// Store result in registers (local variable)
+	// We will reduce r, g, b, a separately
+	float r_val = rgba_sample.r;
+	float g_val = rgba_sample.g;
+	float b_val = rgba_sample.b;
+	float a_val = rgba_sample.a;
+
+	// --- Warp-level reduction using __shfl_xor_sync ---
+	// This sums values by exchanging with XOR partners. Result ends up in lane 0.
+	#pragma unroll 
+	for (int lane_mask = WARP_SIZE / 2; lane_mask > 0; lane_mask /= 2) {
+		// Exchange values with the XOR partner and add to current value
+		r_val += __shfl_xor_sync(FULL_WARP_MASK, r_val, lane_mask);
+		g_val += __shfl_xor_sync(FULL_WARP_MASK, g_val, lane_mask);
+		b_val += __shfl_xor_sync(FULL_WARP_MASK, b_val, lane_mask);
+		a_val += __shfl_xor_sync(FULL_WARP_MASK, a_val, lane_mask);
+        // Implicit warp synchronization with _sync suffix
+	}
+	// At this point, lane 0 has the sum of all 32 samples in its r_val, g_val, b_val, a_val variables.
+
+	// Let lane 0 calculate the average and write the final pixel
+	if (lane_id == 0) {
+		// Average the sum (divide by 32)
+		const float inv_aa = 1.0f / 32.0f; 
+		float avg_r = r_val * inv_aa;
+		float avg_g = g_val * inv_aa;
+		float avg_b = b_val * inv_aa;
+		float avg_a = a_val * inv_aa;
+
+		// Apply gamma correction and convert to unsigned char
+		int r_final = floatToUcharWarp(RGBtosRGB(avg_r));
+		int g_final = floatToUcharWarp(RGBtosRGB(avg_g));
+		int b_final = floatToUcharWarp(RGBtosRGB(avg_b));
+		int a_final = floatToUcharWarp(avg_a);        
+
+		// Write to output image buffer
+		d_image[pixel_idx].r = (unsigned char)r_final;
+		d_image[pixel_idx].g = (unsigned char)g_final;
+		d_image[pixel_idx].b = (unsigned char)b_final;
+		d_image[pixel_idx].a = (unsigned char)a_final;
+	}
+}
+
 void render(pixel_t* d_image, const int img_width, const int img_height, const int aa, RawConfig* config)
 {
 	if (aa <= 1) { 
@@ -139,14 +223,6 @@ void render(pixel_t* d_image, const int img_width, const int img_height, const i
 		return;
 	}
 
-	// --- Atomic AA Path (assuming aa >= 1) ---
-
-	// 1. Allocate accumulation buffer (using float4 for RGBA)
-	float4* d_accum_buffer = nullptr;
-	size_t accum_buffer_size = (size_t)img_width * img_height * sizeof(float4);
-	cudaMalloc(&d_accum_buffer, accum_buffer_size);
-	cudaMemset(d_accum_buffer, 0, accum_buffer_size); // Initialize sums to zero
-
 	// 2. Launch render kernel (one thread per sample)
 	constexpr int block_size = 128; // Or tune this
 	// Total threads needed: width * height * aa (if aa=0 was handled, use max(1,aa))
@@ -154,32 +230,12 @@ void render(pixel_t* d_image, const int img_width, const int img_height, const i
 	int grid_size = (total_threads + block_size - 1) / block_size;
 
 	printf("[DEBUG Render] Launching AA Kernel. Total Threads: %d, Grid: %d, Block: %d\n", total_threads, grid_size, block_size); // Debug
-	render_kernel_atomic_aa<<<grid_size, block_size>>>(
-		d_accum_buffer, 
+	render_kernel_warp_aa<<<grid_size, block_size>>>(
+		d_image, 
 		img_width, 
 		img_height, 
-		aa, // Pass effective_aa
 		config
 	);
-
-	// 3. Launch finalize kernel (one thread per pixel)
-	int finalize_total_threads = img_width * img_height;
-	int finalize_grid_size = (finalize_total_threads + block_size - 1) / block_size;
-	
-  printf("[DEBUG Render] Launching Finalize Kernel. Total Threads: %d, Grid: %d, Block: %d\n", finalize_total_threads, finalize_grid_size, block_size); // Debug
-	finalize_kernel<<<finalize_grid_size, block_size>>>(
-		d_image,
-		d_accum_buffer,
-		img_width,
-		img_height,
-		aa // Pass effective_aa for averaging
-	);
-
-	// 4. Free accumulation buffer
-	cudaFree(d_accum_buffer);
-
-    // Optional: Synchronize if timing or subsequent steps depend on completion
-    // cudaDeviceSynchronize(); 
 }
 
 // void render(pixel_t* d_image, const int img_width, const int img_height, const int aa, RawConfig* config)
